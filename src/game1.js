@@ -1,38 +1,63 @@
 "use strict";
-/* ================= CONFIG (rename teams / keywords here) ================= */
+/* ================= CONFIG (rename teams / keywords / rules here) ================= */
 const CONFIG = {
-  version: "inonu-v1",
+  version: "inonu-v2",
   lang: "tr",
   matchMinutes: 90, secondsPerMinute: 2,          // 90' match = 3 real minutes
   teams: {
     home: { name: "KARTALLAR", short: "EV", seats: "EV SAHİBİ", kit: ["#111111", "#f4f4f4"], accent: "#ffffff", flare: 0xff3b2a,
-            keywords: ["1", "home", "ev", "evsahibi", "ev sahibi", "kartal", "⚫", "⚪"] },
+            keywords: ["1", "home", "ev", "ev sahibi", "evsahibi", "kartal", "⚫", "⚪"] },
     away: { name: "MİSAFİR", short: "DEP", seats: "DEPLASMAN", kit: ["#b5121b", "#ffcc22"], accent: "#ffcc22", flare: 0xffb020,
             keywords: ["2", "away", "dep", "deplasman", "misafir", "🔴", "🟡"] }
   },
+  // whole-word / whole-token matching only (Turkish letters are folded: ş→s, ç→c, ı→i …)
   actions: {
-    drum:    ["davul", "drum", "🥁", "dum"],
-    torch:   ["meşale", "mesale", "torch", "flare", "🔥", "meşal", "işaret fişeği"],
-    bottle:  ["şişe", "sise", "bottle", "su", "water", "🍾", "💧"],
-    lighter: ["çakmak", "cakmak", "lighter", "🔥🔥"]
+    drum:    ["davul", "davula", "drum", "🥁"],
+    torch:   ["meşale", "torch", "flare", "🔥"],
+    bottle:  ["şişe", "bottle", "🍾"],
+    lighter: ["çakmak", "lighter"]
   },
-  gifts: { torchAt: 5, waveAt: 100, tifoAt: 1000 }   // diamonds: <5 drum, >=5 torch, >=100 wave, >=1000 tifo + penalty
+  gifts: { torchAt: 5, waveAt: 100, tifoAt: 1000, comboWindow: 1.6 },   // diamonds: <5 drum, >=5 torch, >=100 wave, >=1000 tifo + penalty
+  penalty: { conversion: 0.75 },
+  // explained, escalating throw rule: N throws within W seconds = one offence. Offences: 1 verbal warning, 2 yellow card (−15 chant), 3+ throwing banned for banSec
+  throwRule: { limit: 3, window: 20, yellowCost: 15, banSec: 30 },
+  points: { chatEvery: 2, likePts: 0.2, likeCapPerMin: 3, giftK: 4, giftCapPerMatch: 60 },   // ranking points: gifts give 4·√diamonds, capped per match
+  demo: { maxJoins: 70, seed: 40 },
+  labels: 18
 };
 const STR = {
-  tr: { fans: "taraftar", venue: "İNÖNÜ STADI · İSTANBUL", mom: "MOMENTUM", board: "🎤 TRİBÜN LİDERLERİ", goal: "GOOOL!",
-        save: "KURTARIŞ!", miss: "DİREK!", warn: "HAKEM UYARISI", warnSub: "{t} tribünü: atma yok! −20 tezahürat", ft: "MAÇ BİTTİ",
-        joined: "{n} {t} tribününe katıldı", drum: "{n} davula vurdu 🥁", torch: "{n} meşale yaktı 🔥", bottle: "{n} sahaya şişe attı 🍾",
-        lighter: "{n} sahaya çakmak attı 🔥", wave: "TRİBÜN DALGASI", tifo: "KOREO!", pen: "PENALTI!", scored: "{t} golü! ⚽",
-        celebH: "🥁 DAVUL yaz · 🔥 MEŞALE yak", celebA: "😡 {t}: ŞİŞE / ÇAKMAK", start: "BAŞLAMA DÜDÜĞÜ", wins: "{t} KAZANDI!", draw: "BERABERE!",
-        acts: [["📣", "Yorum", "TEZAHÜRAT"], ["🥁", "DAVUL", "gol sonrası"], ["🔥", "MEŞALE", "🌹 hediye"], ["🍾", "ŞİŞE / ÇAKMAK", "rakip gol atınca"]],
-        lgH: "yaz → EV SAHİBİ", lgH2: "Type 1 = HOME ⚫⚪", lgA: "yaz → DEPLASMAN", lgA2: "Type 2 = AWAY 🔴🟡", chant: "tezahürat" },
-  en: { fans: "fans", venue: "İNÖNÜ STADIUM · ISTANBUL", mom: "MOMENTUM", board: "🎤 TOP CHANTERS", goal: "GOOOAL!",
-        save: "SAVED!", miss: "OFF THE POST!", warn: "REFEREE WARNING", warnSub: "{t} end: stop throwing! −20 chant", ft: "FULL TIME",
-        joined: "{n} joined the {t} end", drum: "{n} hit the drum 🥁", torch: "{n} lit a torch 🔥", bottle: "{n} threw a bottle 🍾",
-        lighter: "{n} threw a lighter 🔥", wave: "STAND WAVE", tifo: "TIFO!", pen: "PENALTY!", scored: "{t} score! ⚽",
-        celebH: "🥁 type DRUM · 🔥 TORCH", celebA: "😡 {t}: BOTTLE / LIGHTER", start: "KICK OFF", wins: "{t} WIN!", draw: "DRAW!",
-        acts: [["📣", "Comment", "= CHANT"], ["🥁", "DRUM", "after goals"], ["🔥", "TORCH", "🌹 gift"], ["🍾", "BOTTLE / LIGHTER", "when rivals score"]],
-        lgH: "for HOME seats", lgH2: "Yaz 1 = EV SAHİBİ ⚫⚪", lgA: "for AWAY seats", lgA2: "Yaz 2 = DEPLASMAN 🔴🟡", chant: "chant" }
+  tr: { fans: "taraftar", venue: "İNÖNÜ STADI · İSTANBUL", mom: "MOMENTUM", goal: "GOOOL!",
+        save: "KURTARIŞ!", miss: "DİREK!", ft: "MAÇ SONU", start: "BAŞLAMA DÜDÜĞÜ", wins: "{t} KAZANDI!", draw: "BERABERE!",
+        joined: "{n} {t} tribününe katıldı", joinedBatch: "+{k} {t}: {names}", drum: "{n} davula vurdu 🥁", torch: "{n} meşale yaktı 🔥",
+        bottle: "{n} sahaya şişe attı 🍾", lighter: "{n} sahaya çakmak attı", wave: "TRİBÜN DALGASI", tifo: "KOREO!", pen: "PENALTI!",
+        penQ: "⏳ PENALTI SIRADA: {t}", penBy: "🦁 @{n} hediyesi", scored: "{t} golü! ⚽",
+        goalWhy: "📣 Tezahürat %{c} → gol şansı %{p}", celebH: "🥁 DAVUL yaz · 🔥 MEŞALE yak", celebA: "{t}: ŞİŞE/ÇAKMAK = risk ⚠️",
+        acts: [["📣", "Yorum", "TEZAHÜRAT"], ["🥁", "DAVUL", "/ 🔥 MEŞALE"], ["🍾", "ŞİŞE / ÇAKMAK", "⚠️ hakem izliyor"], ["🎁", "Hediye", "efekt · 🦁 penaltı"]],
+        lgH: "yaz → EV SAHİBİ", lgH2: "Type 1 = HOME ⚫⚪", lgA: "yaz → DEPLASMAN", lgA2: "Type 2 = AWAY 🔴🟡",
+        throwRule: "⚠️ 20 sn'de 3 atış: 1. sözlü uyarı · 2. sarı kart −15 · 3. atış yasağı 30 sn",
+        warn1: "SÖZLÜ UYARI", warn1s: "{t}: bir daha olursa SARI KART (−15)", warn2: "SARI KART", warn2s: "{t}: −15 tezahürat · sonraki: ATIŞ YASAĞI",
+        warn3: "ATIŞ YASAĞI", warn3s: "{t}: 30 sn atış yok", banned: "{t} atış yasaklı ({s} sn)",
+        pick: "@{n}: önce takımını seç → 1 = EV · 2 = DEP", pickHeld: "@{n}: hediyen bekliyor → 1 ya da 2 yaz!", heldApplied: "@{n} hediyesi {t} için sayıldı ✅",
+        chance: "⚽ %{p}", attack: "⚡ {t} ATAKTA · tezahürat = gol şansı", boardM: "🎤 BU MAÇ", boardN: "⭐ GECENİN TARAFTARLARI",
+        series: "SERİ {h}-{a}", ftTitle: "MAÇ SONU", motm: "MAÇIN TARAFTARI", next: "SONRAKİ MAÇ {s}", seriesLine: "Seri: {hn} {h} – {a} {an}",
+        top3: "BU MAÇIN EN İYİLERİ", soundTap: "🔈 Ses kapalı — açmak için dokun", stoppage: "+ uzatma: penaltı",
+        liveConnecting: "🔌 TikTok LIVE bağlanıyor…", liveOk: "🟢 TikTok LIVE bağlı", liveFail: "⚠️ TikTok LIVE bağlanamadı — yorumlar gelmiyor", liveLost: "⚠️ TikTok LIVE bağlantısı koptu", liveQuiet: "⚠️ {s} sn'dir LIVE olayı yok" },
+  en: { fans: "fans", venue: "İNÖNÜ STADIUM · ISTANBUL", mom: "MOMENTUM", goal: "GOOOAL!",
+        save: "SAVED!", miss: "OFF THE POST!", ft: "FULL TIME", start: "KICK OFF", wins: "{t} WIN!", draw: "DRAW!",
+        joined: "{n} joined the {t} end", joinedBatch: "+{k} {t}: {names}", drum: "{n} hit the drum 🥁", torch: "{n} lit a torch 🔥",
+        bottle: "{n} threw a bottle 🍾", lighter: "{n} threw a lighter", wave: "STAND WAVE", tifo: "TIFO!", pen: "PENALTY!",
+        penQ: "⏳ PENALTY QUEUED: {t}", penBy: "🦁 @{n}'s gift", scored: "{t} score! ⚽",
+        goalWhy: "📣 Chant {c}% → goal chance {p}%", celebH: "🥁 type DRUM · 🔥 TORCH", celebA: "{t}: BOTTLE/LIGHTER = risk ⚠️",
+        acts: [["📣", "Comment", "= CHANT"], ["🥁", "DRUM", "/ 🔥 TORCH"], ["🍾", "BOTTLE / LIGHTER", "⚠️ ref is watching"], ["🎁", "Gifts", "effects · 🦁 penalty"]],
+        lgH: "for HOME seats", lgH2: "Yaz 1 = EV SAHİBİ ⚫⚪", lgA: "for AWAY seats", lgA2: "Yaz 2 = DEPLASMAN 🔴🟡",
+        throwRule: "⚠️ 3 throws in 20 s: 1st verbal warning · 2nd yellow −15 · 3rd throw ban 30 s",
+        warn1: "VERBAL WARNING", warn1s: "{t}: next time YELLOW CARD (−15)", warn2: "YELLOW CARD", warn2s: "{t}: −15 chant · next: THROW BAN",
+        warn3: "THROW BAN", warn3s: "{t}: no throwing for 30 s", banned: "{t} banned from throwing ({s} s)",
+        pick: "@{n}: pick a team first → 1 = HOME · 2 = AWAY", pickHeld: "@{n}: your gift is waiting → type 1 or 2!", heldApplied: "@{n}'s gift counted for {t} ✅",
+        chance: "⚽ {p}%", attack: "⚡ {t} ATTACKING · chant = goal chance", boardM: "🎤 THIS MATCH", boardN: "⭐ TONIGHT'S SUPPORTERS",
+        series: "SERIES {h}-{a}", ftTitle: "FULL TIME", motm: "FAN OF THE MATCH", next: "NEXT MATCH {s}", seriesLine: "Series: {hn} {h} – {a} {an}",
+        top3: "TOP FANS THIS MATCH", soundTap: "🔈 Sound is off — tap to enable", stoppage: "+ stoppage: penalty",
+        liveConnecting: "🔌 Connecting to TikTok LIVE…", liveOk: "🟢 TikTok LIVE connected", liveFail: "⚠️ TikTok LIVE failed — no comments arriving", liveLost: "⚠️ TikTok LIVE disconnected", liveQuiet: "⚠️ No LIVE events for {s} s" }
 };
 const T = (k, vars) => { let s = (STR[CONFIG.lang] || STR.tr)[k]; if (typeof s !== "string") return s; for (const v in vars || {}) s = s.replace("{" + v + "}", vars[v]); return s; };
 const $ = id => document.getElementById(id);
@@ -107,7 +132,7 @@ const SYN = {
 };
 function sfx(name, arg) {
   if (CLIP) { sfxLog.push({ t: state.time, name, arg }); return; }
-  if (!audioCtx || state.muted) return;
+  if (!audioCtx || state.muted || audioCtx.state !== "running") return;
   try { SYN[name](audioCtx, master, noiseBuf, audioCtx.currentTime + 0.01, arg); } catch (e) {}
 }
 function initAudio() {
@@ -119,8 +144,22 @@ function initAudio() {
   const n = audioCtx.createBufferSource(); n.buffer = noiseBuf; n.loop = true;
   const f = audioCtx.createBiquadFilter(); f.type = "bandpass"; f.frequency.value = 550; f.Q.value = 0.4;
   crowdGain = audioCtx.createGain(); crowdGain.gain.value = 0.05; n.connect(f); f.connect(crowdGain); crowdGain.connect(master); n.start();
+  audioCtx.onstatechange = () => refreshSoundUI();
 }
-function setMuted(m) { state.muted = m; if (!m) { initAudio(); if (audioCtx) audioCtx.resume(); } else if (audioCtx) audioCtx.suspend(); $("mute").textContent = m ? "🔇" : "🔊"; }
+function audioState() { return state.muted ? "muted" : (audioCtx ? audioCtx.state : "none"); }
+// honest sound UI: the speaker only shows "on" when the AudioContext is actually running
+function refreshSoundUI() {
+  const st = audioState(), on = st === "running";
+  $("mute").textContent = on ? "🔊" : "🔇"; $("mute").classList.toggle("warn", !state.muted && !on);
+  $("soundpill").style.display = (!state.muted && !on && !CLIP) ? "block" : "none";
+  window.__audioState = st;
+}
+function setMuted(m) {
+  state.muted = m;
+  if (!m) { initAudio(); if (audioCtx) { const p = audioCtx.resume(); if (p && p.then) p.then(refreshSoundUI, refreshSoundUI); } }
+  else if (audioCtx) audioCtx.suspend();
+  refreshSoundUI();
+}
 // offline render for the share clip: replays the logged sfx + a crowd bed following the chant levels
 window.__renderAudio = async function (dur, bed) {
   const sr = 44100, ctx = new OfflineAudioContext(2, Math.ceil(sr * dur), sr), nb = makeNoise(ctx);

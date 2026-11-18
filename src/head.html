@@ -45,7 +45,7 @@ body.mobile #stage, body.clip #stage { border-radius: 0; box-shadow: none; }
   color: #cfe3ff; background: rgba(0,0,0,.55); padding: 2px 10px; border-radius: 0 0 8px 8px; white-space: nowrap; }
 
 /* chant meters */
-#meters { position: absolute; top: 84px; left: 10px; right: 10px; display: flex; gap: 8px; align-items: center; }
+#meters { position: absolute; top: 88px; left: 10px; right: 10px; display: flex; gap: 8px; align-items: center; }
 .meter { flex: 1; height: 26px; border-radius: 13px; background: rgba(0,0,0,.6); border: 2px solid rgba(255,255,255,.25); position: relative; overflow: hidden; }
 .meter .fill { position: absolute; top: 0; bottom: 0; width: 0%; }
 .meter.home .fill { left: 0; background: repeating-linear-gradient(90deg,#fff 0 8px,#d9d9d9 8px 10px,#111 10px 18px,#333 18px 20px); }
@@ -83,7 +83,7 @@ body.mobile #stage, body.clip #stage { border-radius: 0; box-shadow: none; }
 #pop { position: absolute; left: 0; right: 0; top: 330px; text-align: center; opacity: 0; }
 #pop .big { font-size: 74px; font-weight: 900; letter-spacing: 2px; line-height: 1; color: #fff;
   -webkit-text-stroke: 3px #000; text-shadow: 0 6px 0 #000, 0 0 30px rgba(255,220,80,.9); font-style: italic; }
-#pop .sub { margin-top: 8px; display: inline-block; font-size: 18px; font-weight: 900; padding: 5px 14px; border-radius: 12px; background: rgba(0,0,0,.72); border: 2px solid #ffd75e; }
+#pop .sub { margin-top: 8px; display: inline-block; max-width: 500px; white-space: normal; line-height: 1.25; font-size: 18px; font-weight: 900; padding: 5px 14px; border-radius: 12px; background: rgba(0,0,0,.72); border: 2px solid #ffd75e; }
 #pop.away .big { color: #ffd23a; }
 #pop.warn .big { color: #ffe23a; font-size: 50px; }
 #pop.small .big { font-size: 44px; }
@@ -93,6 +93,45 @@ body.mobile #stage, body.clip #stage { border-radius: 0; box-shadow: none; }
 #celebrate div { display: inline-block; font-size: 15px; font-weight: 900; padding: 6px 12px; border-radius: 12px; margin: 3px; background: rgba(0,0,0,.78); border: 2px solid #fff; }
 #celebrate div.a { border-color: #ffcc22; }
 #card { position: absolute; right: 20px; top: 210px; width: 46px; height: 62px; border-radius: 6px; background: #ffd400; border: 2px solid #000; opacity: 0; box-shadow: 0 6px 18px rgba(0,0,0,.6); }
+
+
+/* v2 additions */
+#series { position: absolute; left: 50%; top: 66px; transform: translateX(-50%); display: flex; gap: 6px; align-items: center; white-space: nowrap; }
+#series .chip { font-size: 10px; font-weight: 900; letter-spacing: 1px; padding: 2px 9px; border-radius: 0 0 8px 8px; background: rgba(0,0,0,.7); color: #ffd75e; }
+#series .venue2 { font-size: 9px; font-weight: 800; letter-spacing: 1.5px; color: #cfe3ff; background: rgba(0,0,0,.55); padding: 2px 8px; border-radius: 0 0 8px 8px; }
+#livepill { position: absolute; left: 50%; top: 118px; transform: translateX(-50%); z-index: 7; display: none; white-space: nowrap; font-size: 12px; font-weight: 900;
+  padding: 5px 12px; border-radius: 14px; background: rgba(0,0,0,.8); border: 2px solid #6cff8f; }
+#livepill.bad { background: #7a0b12; border-color: #ffd23a; color: #fff; font-size: 13px; box-shadow: 0 0 18px rgba(255,60,60,.7); }
+#livepill.warn { background: #5a4300; border-color: #ffd23a; }
+#soundpill { position: absolute; left: 50%; bottom: 112px; transform: translateX(-50%); z-index: 8; display: none; pointer-events: auto; cursor: pointer; white-space: nowrap;
+  font-size: 14px; font-weight: 900; padding: 8px 16px; border-radius: 20px; background: #fff; color: #000; box-shadow: 0 4px 0 #666, 0 0 18px rgba(255,255,255,.6); }
+.ibtn.warn { border-color: #ffd23a; box-shadow: 0 0 10px #ffd23a; }
+.meter .lbl b { color: #6cff8f; margin-left: 6px; }
+#attack { position: absolute; left: 50%; top: 340px; transform: translateX(-50%); white-space: nowrap; font-size: 13px; font-weight: 900; padding: 4px 12px; border-radius: 12px;
+  background: rgba(0,0,0,.72); border: 2px solid #fff; opacity: 0; }
+#attack.away { border-color: #ffcc22; color: #ffe27a; }
+#risk { position: absolute; left: 8px; top: 242px; width: 200px; display: flex; flex-direction: column; gap: 3px; }
+#risk div { font-size: 9.5px; font-weight: 900; padding: 3px 6px; border-radius: 8px; background: rgba(0,0,0,.62); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#risk div.hot { background: #7a5a00; } #risk div.ban { background: #7a0b12; }
+#penq { position: absolute; left: 8px; top: 290px; display: flex; flex-direction: column; gap: 3px; }
+#penq div { font-size: 11px; font-weight: 900; padding: 4px 9px; border-radius: 10px; background: linear-gradient(90deg,#ffe27a,#e3a826); color: #2a1600; box-shadow: 0 0 12px rgba(255,215,94,.7); }
+#prompt { position: absolute; left: 50%; bottom: 112px; transform: translateX(-50%); white-space: nowrap; font-size: 12.5px; font-weight: 900; padding: 6px 12px; border-radius: 12px;
+  background: #1d4fd6; border: 2px solid #fff; opacity: 0; max-width: 520px; overflow: hidden; text-overflow: ellipsis; }
+#gifts { position: absolute; left: 8px; bottom: 150px; display: flex; flex-direction: column; gap: 3px; }
+#gifts div { font-size: 12px; font-weight: 900; padding: 4px 10px; border-radius: 12px; background: rgba(60,20,90,.85); border: 1.5px solid #e6b3ff; white-space: nowrap; }
+#gifts div b { color: #ffd75e; font-size: 14px; }
+#legend .rule { margin-top: 4px; text-align: center; font-size: 9.5px; font-weight: 800; color: #ffd23a; background: rgba(255,210,58,.1); border-radius: 6px; padding: 2px 4px; }
+#ftpanel { position: absolute; left: 22px; right: 22px; top: 170px; z-index: 6; display: none; text-align: center; padding: 14px 12px 16px; border-radius: 18px;
+  background: linear-gradient(180deg, rgba(20,24,38,.96), rgba(6,8,14,.97)); border: 3px solid #ffd75e; box-shadow: 0 10px 40px rgba(0,0,0,.7), 0 0 30px rgba(255,215,94,.35); }
+#ftpanel h2 { margin: 0; font-size: 30px; font-weight: 900; letter-spacing: 3px; color: #ffd75e; text-shadow: 0 3px 0 #000; }
+#ftpanel .fs { display: flex; align-items: center; justify-content: center; gap: 14px; margin: 10px 0 4px; }
+#ftpanel .fs canvas { width: 46px; height: 53px; }
+#ftpanel .fs .n { font-size: 48px; font-weight: 900; }
+#ftpanel .win { font-size: 22px; font-weight: 900; margin: 4px 0; }
+#ftpanel .ser { font-size: 14px; font-weight: 800; color: #cfe3ff; margin-bottom: 8px; }
+#ftpanel .motm { display: inline-block; font-size: 15px; font-weight: 900; padding: 6px 14px; border-radius: 12px; background: linear-gradient(180deg,#fff3b0,#e3a826); color: #2a1600; margin-bottom: 8px; }
+#ftpanel .top div { font-size: 13px; font-weight: 800; padding: 2px 0; }
+#ftpanel .nx { margin-top: 8px; font-size: 13px; font-weight: 900; color: #6cff8f; }
 
 /* start + buttons */
 #start { position: absolute; inset: 0; z-index: 9; display: none; align-items: center; justify-content: flex-end; padding-bottom: 170px; flex-direction: column; gap: 14px; cursor: pointer;
@@ -132,15 +171,17 @@ body.mobile #test-panel { position: fixed; right: 8px; bottom: 8px; z-index: 20;
         <div class="side home"><canvas class="crest" id="crest-home" width="80" height="92"></canvas><div class="tname" id="name-home">KARTALLAR<small id="cnt-home">0 taraftar</small></div></div>
         <div class="mid"><div class="goals" id="goals">0 - 0</div><div class="clock" id="clock">0'</div></div>
         <div class="side away"><canvas class="crest" id="crest-away" width="80" height="92"></canvas><div class="tname" id="name-away">MİSAFİR<small id="cnt-away">0 taraftar</small></div></div>
-        <div class="venue" id="venue">İNÖNÜ STADI · İSTANBUL</div>
       </div>
+      <div id="series"><span class="venue2" id="venue">İNÖNÜ STADI · İSTANBUL</span><span class="chip" id="serieschip">SERİ 0-0</span></div>
       <div id="meters">
         <div class="meter home"><div class="fill" id="fill-home"></div><div class="lbl" id="lbl-home">📣 0%</div></div>
         <div id="mom"><span id="mom-t">MOMENTUM</span><div class="bar"><div class="knob" id="knob"></div></div></div>
         <div class="meter away"><div class="fill" id="fill-away"></div><div class="lbl" id="lbl-away">📣 0%</div></div>
       </div>
       <div id="log"></div>
-      <div id="board"><h4 id="board-t">🎤 TRİBÜN LİDERLERİ</h4><div id="board-rows"></div></div>
+      <div id="board"><h4 id="board-t">🎤 BU MAÇ</h4><div id="board-rows"></div></div>
+      <div id="risk"></div><div id="penq"></div><div id="attack"></div><div id="gifts"></div><div id="prompt"></div>
+      <div id="ftpanel"></div>
       <div id="toast"></div>
       <div id="card"></div>
       <div id="pop"><div class="big" id="pop-big"></div><div class="sub" id="pop-sub"></div></div>
@@ -151,9 +192,11 @@ body.mobile #test-panel { position: fixed; right: 8px; bottom: 8px; z-index: 20;
           <div class="a"><b>2</b> <span id="lg-away">yaz → DEPLASMAN</span><small id="lg-away2">Type 2 = AWAY 🔴🟡</small></div>
         </div>
         <div class="acts" id="acts"></div>
+        <div class="rule" id="rule"></div>
       </div>
     </div>
     <button class="ibtn" id="mute" title="Sound (M)">🔇</button>
+    <div id="livepill"></div><div id="soundpill">🔈</div>
     <button class="ibtn" id="panel-btn" title="Test panel (H)">⚙️</button>
     <div id="start"><div class="t">İNÖNÜ<br>TRİBÜN SAVAŞI<small>Stadium chant battle · TikTok LIVE</small></div><div class="b">▶ OYNA / PLAY</div><div style="font-size:12px;opacity:.8">sesi aç 🔊 · sound on</div></div>
   </div></div>
@@ -166,6 +209,7 @@ body.mobile #test-panel { position: fixed; right: 8px; bottom: 8px; z-index: 20;
     <label>Hediye / gifts</label>
     <div><button id="btn-rose">🌹 Rose (1)</button><button id="btn-med">🍩 Donut (30)</button><button id="btn-big">🎉 Party (300)</button><button id="btn-lion">🦁 Lion (1500)</button></div>
     <label>Bot kalabalık / demo crowd</label>
+    <div><button id="btn-reset">Seriyi sıfırla</button><button id="btn-newuser">Yeni izleyici</button></div>
     <div><label style="display:inline;opacity:1"><input type="checkbox" id="bot-toggle" /> açık</label> <input type="range" id="bot-rate" min="1" max="30" value="8" style="width:120px;vertical-align:middle" /> <span id="bot-rate-val">8/s</span></div>
     <div class="hint">M ses · L dil TR/EN · H panel<br>URL: ?bot=1 demo · ?live=1 TikTok (Playroom) · ?lang=en<br>API: window.handleLiveEvent({type:'chat'|'like'|'gift', userId, username, comment, giftName, diamondCount, repeatCount})</div>
   </div>

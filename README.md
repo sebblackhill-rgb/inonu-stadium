@@ -9,16 +9,19 @@ Single-file browser game (Three.js r128 inlined, works offline). Portrait 9:16 f
 |---|---|
 | `1` / `home` / `ev` | Take a seat in the HOME end (black & white) |
 | `2` / `away` / `dep` | Take a seat in the AWAY end (red & yellow) |
-| any other comment | Chant (+ chant meter). High chant + momentum → attacks → goals |
-| ❤️ likes | Small chant boost |
-| `davul` / `drum` 🥁 | Hit the stand drum (BOOM, nearby fans jump) |
-| `meşale` / `torch` 🔥 | Light a torch with smoke in team colours |
-| `şişe` / `bottle`, `çakmak` / `lighter` | Throw onto the pitch (dents rival chant; 3 throws in 20 s → referee warning, −20 chant) |
-| 🌹 small gift (<5) | Drum hit · gift ≥5 → torch · ≥100 → stand wave · ≥1000 → giant TIFO + penalty kick |
+| likes / gifts before picking | Held (not counted for anyone) + on-screen "pick a team" prompt; applied once you type 1 or 2 |
+| any other comment | Chant. Chant % sets the goal chance shown on each meter (⚽ %) |
+| `davul` / `drum` 🥁 · `meşale` / `torch` 🔥 | Drum hit (rate-limited rhythm) · torch with smoke |
+| `şişe` / `bottle` · `çakmak` / `lighter` | Throw onto the pitch (−4 rival chant). 3 throws in 20 s = an offence: 1st verbal warning, 2nd yellow card −15 chant, 3rd+ 30 s throw ban. Resets every match; risk meter always on screen |
+| gifts | <5 💎 drum · ≥5 torch · ≥100 stand wave · ≥1000 TIFO + queued PENALTY (never lost; taken at the next open-play moment, stoppage time if needed). Repeats are batched (x12 counter) |
+
+Words are matched as whole words/tokens only ("dumb", "drummer", "torchlight" do nothing). Rankings: "BU MAÇ" (this match) and "GECENİN" (whole night) rotate; gifts earn 4·√diamonds, capped at 60 per match. Full-time ceremony + running series score.
+
+Tests: `node tests/acceptance.js` (headless, 32 checks). Share clip: `node tests/record-share-clip.js`.
 
 ## Keys / URL
 H test panel · M sound · L Turkish/English · `?bot=1` demo crowd · `?live=1` TikTok via Playroom · `?lang=en`.
-API: `window.handleLiveEvent({type:'chat'|'like'|'gift', userId, username, comment, giftName, diamondCount, repeatCount, likeCount})`.
+With `?live=1` a status pill shows connecting / connected / failed / disconnected / no-events. API: `window.handleLiveEvent({type:'chat'|'like'|'gift', userId, username, comment, giftName, diamondCount, repeatCount, likeCount})`.
 
 Rename teams / keywords in the `CONFIG` block at the top of `src/game1.js`, then run `./build.sh`.
 No official club names or crests are used.

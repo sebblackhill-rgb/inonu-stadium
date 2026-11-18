@@ -1,0 +1,156 @@
+[
+ {
+  "name": "P4 action matching is whole-word/token only (22 cases)",
+  "pass": true,
+  "info": "dumb→null · drummer→null · DRUM→drum · davul→drum · DAVUL!!→drum · davula vur→drum · torchlight→null · torch→torch · meşale→torch · mesale yak→torch · flareup→null · 🔥→torch · bottleneck→null · şişe→bottle · SISE AT→bottle · şişecam→null · LIGHTER→lighter · çakmak→lighter · cakmakli→null · sudan→null · subway→null · hello there→null"
+ },
+ {
+  "name": "P4 team keywords are whole-token (12 cases)",
+  "pass": true,
+  "info": ""
+ },
+ {
+  "name": "P4 \"dumb\"/\"drummer\" comments do not hit the drum (end-to-end)",
+  "pass": true
+ },
+ {
+  "name": "P3 unassigned like/gift/comment: no seat, no boost to either side",
+  "pass": true,
+  "info": "{\"noFan\":true,\"noBoost\":true}"
+ },
+ {
+  "name": "P3 unassigned contribution is held and they get a pick-team prompt",
+  "pass": true,
+  "info": "@newbie +1: hediyen bekliyor → 1 ya da 2 yaz!"
+ },
+ {
+  "name": "P3 held gift/likes go to the team they pick (\"2\" → away)",
+  "pass": true
+ },
+ {
+  "name": "P1 Lion gift during a goal celebration queues a penalty",
+  "pass": true,
+  "info": "phase after goal: celebrate"
+ },
+ {
+  "name": "P1 queued penalty is taken after the celebration (not lost)",
+  "pass": true
+ },
+ {
+  "name": "P1 gift during a shot in flight → penalty still taken",
+  "pass": true
+ },
+ {
+  "name": "P1 gift at 90' → stoppage-time penalty taken before full time",
+  "pass": true
+ },
+ {
+  "name": "P1 gift during full-time ceremony → penalty carried into next match",
+  "pass": true,
+  "info": "{\"q\":1,\"saw\":true,\"match\":2}"
+ },
+ {
+  "name": "Series score kept across matches, ceremony panel closes for next match",
+  "pass": true,
+  "info": "{\"series\":{\"home\":0,\"away\":1,\"draw\":0},\"matchNo\":2,\"ftHidden\":true}"
+ },
+ {
+  "name": "Full-time ceremony shows score, winner/draw, series, fan of the match, top 3, countdown",
+  "pass": true,
+  "info": "MAÇ SONU | 1 - 0 | 🏆 KARTALLAR KAZANDI! | Seri: KARTALLAR 1 – 1 MİSAFİR | BU MAÇIN EN İYİLERİ | SONRAKİ MAÇ 12"
+ },
+ {
+  "name": "P5 1st offence = verbal warning only (no chant cost)",
+  "pass": true,
+  "info": "{\"awayChantPenalties\":0,\"pop\":\"SÖZLÜ UYARI\"}"
+ },
+ {
+  "name": "P5 2nd offence = yellow card −15",
+  "pass": true,
+  "info": "chant 60→36"
+ },
+ {
+  "name": "P5 3rd offence = 30 s throw ban, throws ignored, no extra chant penalty, ban expires",
+  "pass": true
+ },
+ {
+  "name": "P5 rule explained on screen (legend + live risk meter)",
+  "pass": true,
+  "info": "⚠️ 20 sn'de 3 atış: 1. sözlü uyarı · 2. sarı kart −15 · 3. atış yasağı 30 sn | 🍾 EV 0/3 → SÖZLÜ UYARI / 🍾 DEP 0/3 → ATIŞ YASAĞI"
+ },
+ {
+  "name": "Rankings: 31,500 diamonds of gifts capped (≤60 pts/match), a steady chanter can match it",
+  "pass": true,
+  "info": "{\"gift\":60,\"chat\":70,\"nightGift\":60}"
+ },
+ {
+  "name": "Separate per-match and all-night boards (rotating)",
+  "pass": true,
+  "info": "🎤 BU MAÇ / ⭐ GECENİN TARAFTARLARI"
+ },
+ {
+  "name": "Join log batched (12 joins → ≤2 lines)",
+  "pass": true,
+  "info": "+6 DEP: @batch0, @batch2 +4 / +6 EV: @batch1, @batch3 +4"
+ },
+ {
+  "name": "Repeated gifts batched into one ticker line with a counter",
+  "pass": true,
+  "info": "🎁 @mert1903 · Rose x24"
+ },
+ {
+  "name": "Name labels capped and non-overlapping",
+  "pass": true,
+  "info": "{\"n\":8,\"ov\":0}"
+ },
+ {
+  "name": "Goal chance from chant shown on the meter",
+  "pass": true,
+  "info": "🔥 79%\n⚽ %73"
+ },
+ {
+  "name": "Demo joins capped",
+  "pass": true,
+  "info": "{\"botN\":70,\"max\":70}"
+ },
+ {
+  "name": "No console errors in deterministic suite",
+  "pass": true,
+  "info": ""
+ },
+ {
+  "name": "P2 failed live bridge shows a visible warning",
+  "pass": true,
+  "info": "⚠️ TikTok LIVE bağlanamadı — yorumlar gelmiyor"
+ },
+ {
+  "name": "P2 connected bridge shows OK, and a disconnect shows a warning",
+  "pass": true,
+  "info": "⚠️ TikTok LIVE bağlantısı koptu"
+ },
+ {
+  "name": "No console errors on live pages",
+  "pass": true,
+  "info": ""
+ },
+ {
+  "name": "P2 suspended AudioContext is shown as off with a tap-to-enable button",
+  "pass": true,
+  "info": "{\"st1\":\"running\",\"st2\":\"suspended\",\"icon\":\"🔇\",\"pill\":\"block\"}"
+ },
+ {
+  "name": "P2 tapping the button resumes audio and only then shows 🔊",
+  "pass": true,
+  "info": "{\"st\":\"running\",\"icon\":\"🔊\",\"pill\":\"none\"}"
+ },
+ {
+  "name": "Desktop ?bot=1 run: no console errors",
+  "pass": true,
+  "info": ""
+ },
+ {
+  "name": "Emulated iPhone 13: tap PLAY, game runs, no console errors",
+  "pass": true,
+  "info": "{\"phase\":\"shot\",\"users\":44,\"v\":\"inonu-v2\",\"audio\":\"running\"} "
+ }
+]

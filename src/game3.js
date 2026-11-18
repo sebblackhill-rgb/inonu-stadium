@@ -39,7 +39,8 @@ function buildFans() {
 function addFan(id, name, team) {
   const seat = SEATS[team].find(s => !s.taken);
   const f = { id, name, team, idx: teamFans[team].length, seat, joinT: state.time, chantUntil: 0, jumpUntil: 0, sadUntil: 0, hotUntil: state.time + 3,
-              say: "", sayUntil: 0, throwUntil: 0, ph: Math.random() * 6.28, score: 0, gifts: 0, flareUntil: 0 };
+              say: "", sayUntil: 0, throwUntil: 0, ph: Math.random() * 6.28, score: 0, gifts: 0, flareUntil: 0,
+              mPts: 0, mGiftD: 0, mGiftPts: 0, nPts: (nightBook.get(id) || {}).pts || 0, lastChatPt: -9, likeWin: 0, likeWinT: 0 };
   if (f.idx >= MAXF) return null;
   if (seat) seat.taken = f; else f.seat = { x: sideX(team) * (SX0 + ROWS * RD), y: ROWS * RH + 0.5, z: rnd(ZMIN, ZMAX), r: ROWS };
   teamFans[team].push(f); users.set(id, f); return f;
@@ -182,7 +183,17 @@ function lightTorch(f) {
   const sp = new THREE.Sprite(flareMat[f.team]); sp.scale.set(5, 5, 1); sp.position.set(f.seat.x, f.seat.y + 2.3, f.seat.z); scene.add(sp);
   flares.push({ sp, f, until: state.time + 6.5, team: f.team }); f.flareUntil = state.time + 6.5; f.chantUntil = state.time + 6.5; sfx("hiss");
 }
-function hitDrum(team) { const d = drums[team]; d.hit = 1; sfx("drum"); rings.push({ team, t: 0 }); teamFans[team].forEach(f => { if (Math.abs(f.seat.z + 9) < 9 && Math.random() < 0.7) f.jumpUntil = Math.max(f.jumpUntil, state.time + 0.5); }); fxBurst("BOOM!", team); }
+const drumQ = { home: 0, away: 0 }, drumLast = { home: -9, away: -9 };
+function hitDrum(team) { drumQ[team] = Math.min(4, drumQ[team] + 1); }      // queued + rate-limited so spam = steady rhythm, not noise
+function drumTick() {
+  TEAMS.forEach(team => {
+    if (drumQ[team] <= 0 || state.time - drumLast[team] < 0.32) return;
+    drumQ[team]--; drumLast[team] = state.time;
+    const d = drums[team]; d.hit = 1; sfx("drum"); rings.push({ team, t: 0 });
+    teamFans[team].forEach(f => { if (Math.abs(f.seat.z + 9) < 9 && Math.random() < 0.7) f.jumpUntil = Math.max(f.jumpUntil, state.time + 0.5); });
+    fxBurst("BOOM!", team);
+  });
+}
 function throwObject(f, kind) {
   const s = sideX(f.team);
   const m = kind === "bottle"
