@@ -1,16 +1,17 @@
 "use strict";
 /* ================= CONFIG (rename teams / keywords / rules here) ================= */
 const CONFIG = {
-  version: "inonu-v2",
+  version: "inonu-v3",
   lang: "tr",
   matchMinutes: 90, secondsPerMinute: 2,          // 90' match = 3 real minutes
   teams: {
-    home: { name: "KARTALLAR", short: "EV", seats: "EV SAHİBİ", kit: ["#111111", "#f4f4f4"], accent: "#ffffff", flare: 0xff3b2a,
-            keywords: ["1", "home", "ev", "ev sahibi", "evsahibi", "kartal", "⚫", "⚪"] },
-    away: { name: "MİSAFİR", short: "DEP", seats: "DEPLASMAN", kit: ["#b5121b", "#ffcc22"], accent: "#ffcc22", flare: 0xffb020,
-            keywords: ["2", "away", "dep", "deplasman", "misafir", "🔴", "🟡"] }
+    home: { name: "KARTALLAR", nameEn: "KARTALLAR", short: "EV", shortEn: "HOME", seats: "EV SAHİBİ", seatsEn: "HOME", kit: ["#111111", "#f4f4f4"], accent: "#ffffff", flare: 0xff3b2a,
+            keywords: ["1", "11", "111", "home", "ev", "ev sahibi", "evsahibi", "kartal", "kartallar", "⚫", "⚪"] },
+    away: { name: "MİSAFİR", nameEn: "VISITORS", short: "DEP", shortEn: "AWAY", seats: "DEPLASMAN", seatsEn: "AWAY", kit: ["#b5121b", "#ffcc22"], accent: "#ffcc22", flare: 0xffb020,
+            keywords: ["2", "22", "222", "away", "dep", "deplasman", "misafir", "visitors", "🔴", "🟡"] }
   },
-  // whole-word / whole-token matching only (Turkish letters are folded: ş→s, ç→c, ı→i …)
+  // joins: EVERY word of the comment must be one team's keyword (explicit list, no prefixes): "1", "11", "1!", "ev sahibi", "2 dep!" join; "1990", "1 dakika", "go home" never do
+  // actions: whole-word / whole-token matching only (Turkish letters are folded: ş→s, ç→c, ı→i …)
   actions: {
     drum:    ["davul", "davula", "drum", "🥁"],
     torch:   ["meşale", "torch", "flare", "🔥"],
@@ -19,48 +20,60 @@ const CONFIG = {
   },
   gifts: { torchAt: 5, waveAt: 100, tifoAt: 1000, comboWindow: 1.6 },   // diamonds: <5 drum, >=5 torch, >=100 wave, >=1000 tifo + penalty
   penalty: { conversion: 0.75 },
-  // explained, escalating throw rule: N throws within W seconds = one offence. Offences: 1 verbal warning, 2 yellow card (−15 chant), 3+ throwing banned for banSec
-  throwRule: { limit: 3, window: 20, yellowCost: 15, banSec: 30 },
+  // "su"/"water" were removed from bottle on purpose: "su" is an everyday Turkish word (report C4); "dum" removed (matched "dumb", A2)
+  // explained, escalating throw rule: N throws within W seconds = one offence; after an offence that end's throws do not count (and do not hurt the rivals) for cooldown seconds. Offences: 1 verbal warning, 2 yellow card (−15 chant), 3+ throwing banned for banSec
+  throwRule: { limit: 3, window: 20, yellowCost: 15, banSec: 30, cooldown: 20 },
   points: { chatEvery: 2, likePts: 0.2, likeCapPerMin: 3, giftK: 4, giftCapPerMatch: 60 },   // ranking points: gifts give 4·√diamonds, capped per match
-  demo: { maxJoins: 70, seed: 40 },
-  labels: 18
+  demo: { maxJoins: 70, seed: 40 },               // hard cap: bots never exceed maxJoins fans in total (seed included)
+  labels: 10,
+  ftSec: 16,                                        // full-time ceremony length
+  shots: { minChant: 8, base: 0.15, perChant: 1.8 },  // no chant (<8%) = no shots; more chant = more shots
+  live: { backoff: [5, 10, 30, 60], maxTries: 5 }   // bridge retries (s), then a manual "tap to retry"
 };
 const STR = {
   tr: { fans: "taraftar", venue: "İNÖNÜ STADI · İSTANBUL", mom: "MOMENTUM", goal: "GOOOL!",
         save: "KURTARIŞ!", miss: "DİREK!", ft: "MAÇ SONU", start: "BAŞLAMA DÜDÜĞÜ", wins: "{t} KAZANDI!", draw: "BERABERE!",
-        joined: "{n} {t} tribününe katıldı", joinedBatch: "+{k} {t}: {names}", drum: "{n} davula vurdu 🥁", torch: "{n} meşale yaktı 🔥",
+        joined: "{n} {t} tribününe katıldı", joinRule: "✅ “{k}” = {t} tribünü", joinedBatch: "+{k} {t}: {names}", drum: "{n} davula vurdu 🥁", torch: "{n} meşale yaktı 🔥",
         bottle: "{n} sahaya şişe attı 🍾", lighter: "{n} sahaya çakmak attı", wave: "TRİBÜN DALGASI", tifo: "KOREO!", pen: "PENALTI!",
         penQ: "⏳ PENALTI SIRADA: {t}", penBy: "🦁 @{n} hediyesi", scored: "{t} golü! ⚽",
-        goalWhy: "📣 Tezahürat %{c} → gol şansı %{p}", celebH: "🥁 DAVUL yaz · 🔥 MEŞALE yak", celebA: "{t}: ŞİŞE/ÇAKMAK = risk ⚠️",
+        goalWhy: "📣 Tezahürat %{c} → gol şansı %{p}", celebH: "🥁 DAVUL yaz · 🔥 MEŞALE yak", celebA: "{t}: ŞİŞE/ÇAKMAK = risk ⚠️", watch: "👀 HAKEM İZLİYOR", watchS: "{t}: bir atış daha = {w}", cool: "(hakem uyardı — sayılmadı)", penFull: "+tezahürat (en fazla 2 penaltı sırada)", penFt: "maç bitti — penaltı yok, +tezahürat", matchN: "MAÇ {n}",
         acts: [["📣", "Yorum", "TEZAHÜRAT"], ["🥁", "DAVUL", "/ 🔥 MEŞALE"], ["🍾", "ŞİŞE / ÇAKMAK", "⚠️ hakem izliyor"], ["🎁", "Hediye", "efekt · 🦁 penaltı"]],
-        lgH: "yaz → EV SAHİBİ", lgH2: "Type 1 = HOME ⚫⚪", lgA: "yaz → DEPLASMAN", lgA2: "Type 2 = AWAY 🔴🟡",
-        throwRule: "⚠️ 20 sn'de 3 atış: 1. sözlü uyarı · 2. sarı kart −15 · 3. atış yasağı 30 sn",
+        lgH: "yaz → EV SAHİBİ", lgH2: "⚫⚪ siyah-beyaz", lgA: "yaz → DEPLASMAN", lgA2: "🔴🟡 kırmızı-sarı",
+        throwRule: "⚠️ 20 sn'de 3 atış: 1. sözlü uyarı · 2. sarı kart −15 · 3. atış yasağı 30 sn · uyarıdan sonra 20 sn atış sayılmaz",
         warn1: "SÖZLÜ UYARI", warn1s: "{t}: bir daha olursa SARI KART (−15)", warn2: "SARI KART", warn2s: "{t}: −15 tezahürat · sonraki: ATIŞ YASAĞI",
         warn3: "ATIŞ YASAĞI", warn3s: "{t}: 30 sn atış yok", banned: "{t} atış yasaklı ({s} sn)",
         pick: "@{n}: önce takımını seç → 1 = EV · 2 = DEP", pickHeld: "@{n}: hediyen bekliyor → 1 ya da 2 yaz!", heldApplied: "@{n} hediyesi {t} için sayıldı ✅",
         chance: "⚽ %{p}", attack: "⚡ {t} ATAKTA · tezahürat = gol şansı", boardM: "🎤 BU MAÇ", boardN: "⭐ GECENİN TARAFTARLARI",
-        series: "SERİ {h}-{a}", ftTitle: "MAÇ SONU", motm: "MAÇIN TARAFTARI", next: "SONRAKİ MAÇ {s}", seriesLine: "Seri: {hn} {h} – {a} {an}",
+        series: "MAÇ {m} · SERİ {h}-{a}", ftTitle: "MAÇ SONU", motm: "MAÇIN TARAFTARI", next: "SONRAKİ MAÇ {s}", seriesLine: "Seri: {hn} {h} – {a} {an}",
         top3: "BU MAÇIN EN İYİLERİ", soundTap: "🔈 Ses kapalı — açmak için dokun", stoppage: "+ uzatma: penaltı",
-        liveConnecting: "🔌 TikTok LIVE bağlanıyor…", liveOk: "🟢 TikTok LIVE bağlı", liveFail: "⚠️ TikTok LIVE bağlanamadı — yorumlar gelmiyor", liveLost: "⚠️ TikTok LIVE bağlantısı koptu", liveQuiet: "⚠️ {s} sn'dir LIVE olayı yok" },
+        liveConnecting: "🔌 TikTok LIVE bağlanıyor…", liveOk: "🟢 TikTok LIVE bağlı", liveFail: "⚠️ TikTok LIVE bağlanamadı — yorumlar gelmiyor", liveLost: "⚠️ TikTok LIVE bağlantısı koptu", liveQuiet: "⚠️ {s} sn'dir LIVE olayı yok", liveRetryIn: " · {s} sn sonra tekrar ({i}/{n})", liveTap: " · tekrar denemek için dokun", liveReload: " · yeniden bağlanmak için dokun",
+        ui: { title: "İNÖNÜ<br>TRİBÜN SAVAŞI", panelTitle: "TEST PANELİ", panelHide: "(H gizle)", user: "Kullanıcı", comment: "Yorum", send: "Gönder 💬", like: "Beğeni ❤️", gifts: "Hediyeler", demo: "Bot kalabalık", reset: "Seriyi sıfırla", newUser: "Yeni izleyici", on: "açık", pause: "⏸ Durdur", resume: "▶ Devam", restart: "⟳ Maçı yeniden başlat", play: "▶ OYNA", startSub: "Tribün tezahürat savaşı · TikTok LIVE", soundOn: "sesi aç 🔊", hint: "M ses · L dil TR/EN · H panel · ? yardım", mute: "Ses (M)", panelBtn: "Test paneli (H)",
+              helpT: "KISAYOLLAR VE URL AYARLARI", help: [["M", "ses aç/kapa"], ["L", "dil TR/EN"], ["H", "test paneli"], ["P", "durdur/devam"], ["?", "bu yardım"], ["?bot=1", "demo kalabalık hemen başlar"], ["?live=1", "TikTok LIVE (Playroom) bağlantısı"], ["?lang=en", "İngilizce"], ["?sound=1", "ses açık başlar (ilk dokunuşta)"], ["?demo=0", "başlangıç ekranı ve bot yok"], ["?panel=0", "test paneli gizli"], ["?seed=N", "N taraftarla başla"], ["?clip=1", "video/kapak modu (elle zaman)"], ["?help=1", "bu yardım açık başlar"], ["?cx ?cy ?lx ?fov ?fp ?lk", "kamera ayarları"]], close: "kapatmak için dokun" } },
   en: { fans: "fans", venue: "İNÖNÜ STADIUM · ISTANBUL", mom: "MOMENTUM", goal: "GOOOAL!",
         save: "SAVED!", miss: "OFF THE POST!", ft: "FULL TIME", start: "KICK OFF", wins: "{t} WIN!", draw: "DRAW!",
-        joined: "{n} joined the {t} end", joinedBatch: "+{k} {t}: {names}", drum: "{n} hit the drum 🥁", torch: "{n} lit a torch 🔥",
+        joined: "{n} joined the {t} end", joinRule: "✅ “{k}” = {t} end", joinedBatch: "+{k} {t}: {names}", drum: "{n} hit the drum 🥁", torch: "{n} lit a torch 🔥",
         bottle: "{n} threw a bottle 🍾", lighter: "{n} threw a lighter", wave: "STAND WAVE", tifo: "TIFO!", pen: "PENALTY!",
         penQ: "⏳ PENALTY QUEUED: {t}", penBy: "🦁 @{n}'s gift", scored: "{t} score! ⚽",
-        goalWhy: "📣 Chant {c}% → goal chance {p}%", celebH: "🥁 type DRUM · 🔥 TORCH", celebA: "{t}: BOTTLE/LIGHTER = risk ⚠️",
+        goalWhy: "📣 Chant {c}% → goal chance {p}%", celebH: "🥁 type DRUM · 🔥 TORCH", celebA: "{t}: BOTTLE/LIGHTER = risk ⚠️", watch: "👀 THE REF IS WATCHING", watchS: "{t}: one more throw = {w}", cool: "(ref already warned — not counted)", penFull: "+chant (max 2 penalties queued)", penFt: "match over — no penalty, +chant", matchN: "MATCH {n}",
         acts: [["📣", "Comment", "= CHANT"], ["🥁", "DRUM", "/ 🔥 TORCH"], ["🍾", "BOTTLE / LIGHTER", "⚠️ ref is watching"], ["🎁", "Gifts", "effects · 🦁 penalty"]],
-        lgH: "for HOME seats", lgH2: "Yaz 1 = EV SAHİBİ ⚫⚪", lgA: "for AWAY seats", lgA2: "Yaz 2 = DEPLASMAN 🔴🟡",
-        throwRule: "⚠️ 3 throws in 20 s: 1st verbal warning · 2nd yellow −15 · 3rd throw ban 30 s",
+        lgH: "for HOME seats", lgH2: "⚫⚪ black & white", lgA: "for AWAY seats", lgA2: "🔴🟡 red & yellow",
+        throwRule: "⚠️ 3 throws in 20 s: 1st verbal warning · 2nd yellow −15 · 3rd throw ban 30 s · throws don't count for 20 s after a warning",
         warn1: "VERBAL WARNING", warn1s: "{t}: next time YELLOW CARD (−15)", warn2: "YELLOW CARD", warn2s: "{t}: −15 chant · next: THROW BAN",
         warn3: "THROW BAN", warn3s: "{t}: no throwing for 30 s", banned: "{t} banned from throwing ({s} s)",
         pick: "@{n}: pick a team first → 1 = HOME · 2 = AWAY", pickHeld: "@{n}: your gift is waiting → type 1 or 2!", heldApplied: "@{n}'s gift counted for {t} ✅",
         chance: "⚽ {p}%", attack: "⚡ {t} ATTACKING · chant = goal chance", boardM: "🎤 THIS MATCH", boardN: "⭐ TONIGHT'S SUPPORTERS",
-        series: "SERIES {h}-{a}", ftTitle: "FULL TIME", motm: "FAN OF THE MATCH", next: "NEXT MATCH {s}", seriesLine: "Series: {hn} {h} – {a} {an}",
+        series: "MATCH {m} · SERIES {h}-{a}", ftTitle: "FULL TIME", motm: "FAN OF THE MATCH", next: "NEXT MATCH {s}", seriesLine: "Series: {hn} {h} – {a} {an}",
         top3: "TOP FANS THIS MATCH", soundTap: "🔈 Sound is off — tap to enable", stoppage: "+ stoppage: penalty",
-        liveConnecting: "🔌 Connecting to TikTok LIVE…", liveOk: "🟢 TikTok LIVE connected", liveFail: "⚠️ TikTok LIVE failed — no comments arriving", liveLost: "⚠️ TikTok LIVE disconnected", liveQuiet: "⚠️ No LIVE events for {s} s" }
+        liveConnecting: "🔌 Connecting to TikTok LIVE…", liveOk: "🟢 TikTok LIVE connected", liveFail: "⚠️ TikTok LIVE failed — no comments arriving", liveLost: "⚠️ TikTok LIVE disconnected", liveQuiet: "⚠️ No LIVE events for {s} s", liveRetryIn: " · retrying in {s} s ({i}/{n})", liveTap: " · tap to retry", liveReload: " · tap to reconnect",
+        ui: { title: "İNÖNÜ<br>CHANT BATTLE", panelTitle: "TEST PANEL", panelHide: "(H hide)", user: "Username", comment: "Comment", send: "Send 💬", like: "Like ❤️", gifts: "Gifts", demo: "Demo crowd", reset: "Reset series", newUser: "New viewer", on: "on", pause: "⏸ Pause", resume: "▶ Resume", restart: "⟳ Restart match", play: "▶ PLAY", startSub: "Stadium chant battle · TikTok LIVE", soundOn: "turn sound on 🔊", hint: "M sound · L language TR/EN · H panel · ? help", mute: "Sound (M)", panelBtn: "Test panel (H)",
+              helpT: "KEYS AND URL OPTIONS", help: [["M", "sound on/off"], ["L", "language TR/EN"], ["H", "test panel"], ["P", "pause/resume"], ["?", "this help"], ["?bot=1", "demo crowd starts at once"], ["?live=1", "connect TikTok LIVE (Playroom)"], ["?lang=en", "English"], ["?sound=1", "start with sound (on first tap)"], ["?demo=0", "no start screen, no bots"], ["?panel=0", "hide the test panel"], ["?seed=N", "start with N fans"], ["?clip=1", "video/cover mode (manual time)"], ["?help=1", "open this help"], ["?cx ?cy ?lx ?fov ?fp ?lk", "camera overrides"]], close: "tap to close" } }
 };
 const T = (k, vars) => { let s = (STR[CONFIG.lang] || STR.tr)[k]; if (typeof s !== "string") return s; for (const v in vars || {}) s = s.replace("{" + v + "}", vars[v]); return s; };
 const $ = id => document.getElementById(id);
+const EN = () => CONFIG.lang === "en";
+const tName = t => EN() ? CONFIG.teams[t].nameEn : CONFIG.teams[t].name;
+const tShort = t => EN() ? CONFIG.teams[t].shortEn : CONFIG.teams[t].short;
+const tSeats = t => EN() ? CONFIG.teams[t].seatsEn : CONFIG.teams[t].seats;
 const Q = new URLSearchParams(location.search);
 const CLIP = Q.get("clip") === "1";
 const IS_MOBILE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || Q.get("mobile") === "1";

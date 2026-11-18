@@ -92,7 +92,7 @@ function makePlayer(team, gk) {
 const FORM = [[-6, 5], [6, 5], [-3.5, -1], [3.5, -1], [0, -7]];   // relative to ball, in team attack direction
 function buildPlayers() {
   TEAMS.forEach(t => { for (let i = 0; i < 5; i++) players[t].push(makePlayer(t, false)); players[t].push(makePlayer(t, true)); });
-  ball = new THREE.Mesh(new THREE.IcosahedronGeometry(0.38, 1), new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true })); scene.add(ball);
+  ball = new THREE.Mesh(new THREE.IcosahedronGeometry(0.38, 1), new THREE.MeshLambertMaterial({ color: 0xffffff })); scene.add(ball);
   ballShadow = new THREE.Mesh(new THREE.CircleGeometry(0.4, 10), new THREE.MeshBasicMaterial({ color: 0, transparent: true, opacity: 0.35 })); ballShadow.rotation.x = -Math.PI / 2; ballShadow.position.y = 0.03; scene.add(ballShadow);
   refMesh = makePlayer("home", true); refMesh.g.children[0].material = lam(0xffd400); refMesh.g.scale.setScalar(1.15);
   resetPositions();

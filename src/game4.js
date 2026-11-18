@@ -13,19 +13,28 @@ function matchKw(tk, k) {
   return false;
 }
 const hasKw = (tk, list) => list.some(k => matchKw(tk, k));
+// explicit permitted-token list: every word of the comment must be covered by ONE team's keywords ("1", "11", "1!", "ev sahibi", "2 dep!");
+// "1990", "1 dakika", "go home", "1 2" never join. Team-colour emoji count; other emoji/punctuation are ignored.
+function coversTeam(tk, team) {
+  const kws = CONFIG.teams[team].keywords.map(kwTokens), W = tk.words; let i = 0;
+  while (i < W.length) { let adv = 0; for (const k of kws) if (k.words && k.words.length > adv && k.words.every((w, j) => W[i + j] === w)) adv = k.words.length; if (!adv) return false; i += adv; }
+  return true;
+}
+const teamEmoji = t => CONFIG.teams[t].keywords.filter(k => PICTO.test(k));
 function teamFromTokens(tk) {
-  // a join must be short ("1", "ev sahibi", "2 dep!") or start with the team word, so "go home" style sentences don't seat people
-  const hits = TEAMS.filter(t => hasKw(tk, CONFIG.teams[t].keywords));
-  if (hits.length !== 1) return null;
-  const short = tk.words.length <= 3;
-  const first = tk.words.length ? CONFIG.teams[hits[0]].keywords.some(k => kwTokens(k).words && kwTokens(k).words[0] === tk.words[0]) : tk.emoji.length > 0;
-  return (short || first) ? hits[0] : null;
+  const hits = TEAMS.filter(t => coversTeam(tk, t) && !teamEmoji(other(t)).some(e => tk.emoji.includes(e)) && (tk.words.length > 0 || teamEmoji(t).some(e => tk.emoji.includes(e))));
+  return hits.length === 1 ? hits[0] : null;
+}
+const joinTokSeen = new Set();
+function noteJoinToken(comment, team) {   // every accepted join token is shown once, so the streamer can see the rule working
+  const k = String(comment || "").trim().replace(/\s+/g, " ").slice(0, 14), key = fold(k);
+  if (!k || joinTokSeen.has(key)) return; joinTokSeen.add(key); logLine(T("joinRule", { k, t: tSeats(team) }), team);
 }
 function actionOf(tk) { for (const a of ["lighter", "bottle", "torch", "drum"]) if (hasKw(tk, CONFIG.actions[a])) return a; return null; }
 window.__match = (comment) => { const tk = tokenize(comment); return { team: teamFromTokens(tk), action: actionOf(tk) }; };
 
 /* ================= state additions ================= */
-Object.assign(state, { penQ: [], pen: null, offence: { home: 0, away: 0 }, banUntil: { home: -1, away: -1 }, series: { home: 0, away: 0, draw: 0 }, matchNo: 1, lastShot: null });
+Object.assign(state, { penQ: [], pen: null, offence: { home: 0, away: 0 }, banUntil: { home: -1, away: -1 }, series: { home: 0, away: 0, draw: 0 }, matchNo: 1, lastShot: null, coolUntil: { home: -1, away: -1 }, shots: 0, paused: false });
 const nightBook = new Map();       // userId -> {name, team, pts} for the whole night (session, persisted)
 const pending = new Map();         // unassigned viewers: userId -> {name, likes, gifts:[{val, unit, giftName, t}], t}
 try { const sv = JSON.parse(localStorage.getItem("inonu-series") || "null"); if (sv) Object.assign(state.series, sv); } catch (e) {}
@@ -37,7 +46,7 @@ function persist() { try { localStorage.setItem("inonu-series", JSON.stringify(s
 function addChant(team, v) { if (v > 0) { const gd = state.goals[team] - state.goals[other(team)]; v *= gd < 0 ? 1.3 : gd > 0 ? 0.85 : 1; if (state.phase === "celebrate") v *= 0.5; } state.chant[team] = clamp(state.chant[team] + v, 0, 100); }
 function logLine(txt, team) { const el = document.createElement("div"); el.textContent = txt; if (team === "away") el.className = "away"; const L = $("log"); L.prepend(el); while (L.children.length > 5) L.lastChild.remove(); }
 function addPts(f, v) { if (!(v > 0)) return; f.mPts += v; f.nPts += v; nightBook.set(f.id, { name: f.name, team: f.team, pts: f.nPts }); }
-function goalChance(team) { const lvl = state.chant[team] / 100, mom = team === "home" ? state.momentum : -state.momentum; return clamp(0.2 + lvl * 0.5 + mom * 0.15, 0.15, 0.8); }
+function goalChance(team) { const lvl = state.chant[team] / 100, mom = team === "home" ? state.momentum : -state.momentum; return clamp(0.1 + lvl * 0.6 + mom * 0.15, 0.05, 0.8); }
 function inAttack(team) { return team === "home" ? state.ballZ < -PL * 0.5 : state.ballZ > PL * 0.5; }
 
 /* join log batching + team-pick prompts */
@@ -45,8 +54,8 @@ const joinBuf = { home: [], away: [] }; let joinFlushT = 0;
 function flushJoins() {
   if (state.time - joinFlushT < 1.5) return; joinFlushT = state.time; let any = false;
   TEAMS.forEach(t => { const b = joinBuf[t]; if (!b.length) return; any = true;
-    if (b.length === 1) logLine(T("joined", { n: "@" + b[0], t: CONFIG.teams[t].short }), t);
-    else logLine(T("joinedBatch", { k: b.length, t: CONFIG.teams[t].short, names: b.slice(0, 2).map(n => "@" + n).join(", ") + (b.length > 2 ? " +" + (b.length - 2) : "") }), t);
+    if (b.length === 1) logLine(T("joined", { n: "@" + b[0], t: tSeats(t) }), t);
+    else logLine(T("joinedBatch", { k: b.length, t: tSeats(t), names: b.slice(0, 2).map(n => "@" + n).join(", ") + (b.length > 2 ? " +" + (b.length - 2) : "") }), t);
     b.length = 0; });
   if (any) sfx("pop");
 }
@@ -76,16 +85,22 @@ function doAction(f, kind) {
   else if (kind === "torch") { lightTorch(f); addChant(f.team, 6); addPts(f, 0.5); logLine(T("torch", { n }), f.team); }
   else {
     const team = f.team, R = CONFIG.throwRule;
-    if (state.time < state.banUntil[team]) { if (state.time - banLogT[team] > 4) { banLogT[team] = state.time; logLine("⛔ " + T("banned", { t: CONFIG.teams[team].short, s: Math.ceil(state.banUntil[team] - state.time) }), team); } return; }
-    throwObject(f, kind); logLine(T(kind, { n }), team);
+    if (state.time < state.banUntil[team]) { if (state.time - banLogT[team] > 4) { banLogT[team] = state.time; logLine("⛔ " + T("banned", { t: tShort(team), s: Math.ceil(state.banUntil[team] - state.time) }), team); } return; }
+    throwObject(f, kind);
+    const cool = state.time < state.coolUntil[team];               // ref just warned this end: throws neither count nor hurt the rivals
+    logLine(T(kind, { n }) + (cool ? " " + T("cool") : ""), team);
+    if (cool) return;
     addChant(other(team), -4);                                   // distracts the celebrating rivals...
     const arr = state.throws[team]; arr.push(state.time); while (arr.length && state.time - arr[0] > R.window) arr.shift();
-    if (arr.length >= R.limit) { arr.length = 0; state.offence[team]++; const lvl = state.offence[team]; later(1.0, () => refereeWarning(team, lvl)); }   // ...but the ref is watching (explained ladder)
+    if (arr.length >= R.limit) { arr.length = 0; state.offence[team]++; state.coolUntil[team] = state.time + 1 + R.cooldown; const lvl = state.offence[team]; later(1.0, () => refereeWarning(team, lvl)); }   // ...but the ref is watching (explained ladder)
+    else if (arr.length === R.limit - 1) watchCue(team);
   }
 }
-let cardT = -9, cardColor = "#ffd400";
+let cardT = -9, cardColor = "#ffd400"; window.__watchCues = [];
+const nextOffence = t => { const o = state.offence[t]; return o === 0 ? T("warn1") : o === 1 ? T("warn2") : T("warn3"); };
+function watchCue(team) { window.__watchCues.push({ team, t: state.time }); showPop(T("watch"), T("watchS", { t: tName(team), w: nextOffence(team) }), "warn", 1.6, "small", 1); }
 function refereeWarning(team, lvl) {
-  const R = CONFIG.throwRule, tn = CONFIG.teams[team].name;
+  const R = CONFIG.throwRule, tn = tName(team);
   state.warnings[team]++; sfx("whistle", 3);
   if (lvl <= 1) { showPop(T("warn1"), T("warn1s", { t: tn }), "warn", 2.4, "", 2); cardColor = "#f2f2f2"; }
   else if (lvl === 2) { addChant(team, -R.yellowCost); showPop(T("warn2"), T("warn2s", { t: tn }), "warn", 2.4, "", 2); cardColor = "#ffd400"; }
@@ -99,7 +114,7 @@ function joinFan(id, name, team) {
   if (p) { pending.delete(id);
     if (p.likes) { fanChant(f, Math.min(10, 0.5 * p.likes)); hearts.push({ f, t: 0 }); }
     p.gifts.filter(g => state.time - g.t < 180).forEach(g => applyGift(f, g.val, g.unit, g.giftName, 1));
-    if (p.gifts.length) logLine(T("heldApplied", { n: name, t: CONFIG.teams[team].short }), team);
+    if (p.gifts.length) logLine(T("heldApplied", { n: name, t: tShort(team) }), team);
   }
   return f;
 }
@@ -119,10 +134,10 @@ window.handleLiveEvent = function (ev) {
     let f = users.get(id);
     if (ev.type === "chat") {
       const tk = tokenize(ev.comment), jt = teamFromTokens(tk);
-      if (!f) { if (jt) joinFan(id, name, jt); else askPick(id, name, false); return; }   // no seat until a team is chosen
+      if (!f) { if (jt) { if (joinFan(id, name, jt)) noteJoinToken(ev.comment, jt); } else askPick(id, name, false); return; }   // no seat until a team is chosen
       const act = actionOf(tk);
       if (act) doAction(f, act);
-      else fanChant(f, jt ? 2.5 : 3, jt ? "" : ev.comment);
+      else fanChant(f, 3, jt ? "" : ev.comment);   // a typed team keyword chants as much as any other comment
     } else if (ev.type === "like") {
       const n = Math.max(1, Math.min(15, Number(ev.likeCount || ev.count) || 1));
       if (!f) { holdForUnassigned(id, name, n, null); return; }
@@ -164,8 +179,11 @@ function tifo(f) {
   const tf = tifos[f.team]; tf.start = state.time; tf.until = state.time + 5; addChant(f.team, 50); state.momentum = f.team === "home" ? 0.9 : -0.9;
   sfx("roar"); state.shake = 0.6;
   const queued = state.penQ.filter(p => p.team === f.team).length + (state.pen && state.pen.team === f.team ? 1 : 0);
-  if (queued < 2) { state.penQ.push({ team: f.team, by: f.name, at: state.time }); showPop(T("tifo"), T("penBy", { n: f.name }) + " → " + T("pen"), f.team, 2.4, "", 2); }
-  else showPop(T("tifo"), "@" + f.name, f.team, 2, "", 2);
+  // documented rule: up to 2 penalties queued per team, taken in arrival order at the next open play; extra gifts = chant only;
+  // nothing is queued during the full-time ceremony, and the queue is cleared at kickoff (penalties never carry into the next match)
+  if (state.phase === "ft") showPop(T("tifo"), "@" + f.name + " · " + T("penFt"), f.team, 2, "", 2);
+  else if (queued < 2) { state.penQ.push({ team: f.team, by: f.name, at: state.time }); showPop(T("tifo"), T("penBy", { n: f.name }) + " → " + T("pen"), f.team, 2.4, "", 2); }
+  else showPop(T("tifo"), "@" + f.name + " · " + T("penFull"), f.team, 2, "", 2);
 }
 
 /* ================= match engine ================= */
@@ -179,7 +197,7 @@ function updateMatch(dt) {
   runTimers();
   TEAMS.forEach(t => { state.chant[t] = Math.max(0, state.chant[t] - dt * (3 + state.chant[t] * 0.07)); });
   if (state.phase === "intro") { if (!introHold && state.time - introStart > 1.2) { state.phase = "play"; sfx("whistle", 2); showPop(T("start"), "", "", 1.4, "small", 1); } return; }
-  if (state.phase === "ft") { state.phaseT += dt; if (state.phaseT > 12) newMatch(); return; }
+  if (state.phase === "ft") { state.phaseT += dt; if (state.phaseT > CONFIG.ftSec) newMatch(); return; }
   if (state.minute < CONFIG.matchMinutes) state.minute = Math.min(CONFIG.matchMinutes, state.minute + dt / CONFIG.secondsPerMinute);
   if (state.phase === "celebrate") { state.phaseT += dt; if (state.phaseT > 6.5) { state.phase = "play"; resetPositions(); sfx("whistle", 1); state.chant[state.lastScorer] *= 0.55; } return; }
   if (state.phase === "penalty") { state.phaseT += dt; if (state.phaseT > 1.5 && !state.pen.kicked) { state.pen.kicked = true; const pt = state.pen.team; state.lastShot = { c: Math.round(state.chant[pt]), p: Math.round(CONFIG.penalty.conversion * 100), pen: true }; shoot(pt, Math.random() < CONFIG.penalty.conversion, true); } return; }
@@ -195,8 +213,9 @@ function updateMatch(dt) {
   shotCooldown -= dt;
   if (shotCooldown <= 0) TEAMS.forEach(t => {
     if (state.phase !== "play" || !inAttack(t)) return;
-    const lvl = state.chant[t] / 100;
-    if (Math.random() < dt * (0.5 + lvl * 1.5)) { shotCooldown = 2.2; const p = goalChance(t); state.lastShot = { c: Math.round(state.chant[t]), p: Math.round(p * 100) }; shoot(t, Math.random() < p); }
+    const lvl = state.chant[t] / 100, SC = CONFIG.shots;
+    if (state.chant[t] < SC.minChant) return;                     // a silent end never shoots: goals have to be chanted for
+    if (Math.random() < dt * (SC.base + lvl * SC.perChant)) { shotCooldown = 2.2; state.shots++; const p = goalChance(t); state.lastShot = { c: Math.round(state.chant[t]), p: Math.round(p * 100) }; shoot(t, Math.random() < p); }
   });
 }
 function shotResult(bf) {
@@ -206,7 +225,7 @@ function shotResult(bf) {
 }
 function goal(team) {
   state.goals[team]++; state.lastScorer = team; state.phase = "celebrate"; state.phaseT = 0; state.shake = 1;
-  showPop(T("goal"), T("scored", { t: CONFIG.teams[team].name }) + (state.lastShot ? "  " + T("goalWhy", state.lastShot) : ""), team, 3, "", 3);
+  showPop(T("goal"), T("scored", { t: tName(team) }) + (state.lastShot ? "  " + T("goalWhy", state.lastShot) : ""), team, 3, "", 3);
   sfx("roar"); later(0.2, () => sfx("chant", team));
   goals[attackDir(team)].net.userData.shake = 1;
   teamFans[team].forEach(f => f.jumpUntil = state.time + rnd(3, 5));
@@ -226,20 +245,21 @@ function fullTime() {
   const esc = s => String(s).replace(/[<>&"]/g, "");
   const P = $("ftpanel");
   P.innerHTML = "<h2>" + T("ftTitle") + "</h2><div class='fs'><canvas id='ftc-home' width='80' height='92'></canvas><span class='n'>" + h + " - " + a + "</span><canvas id='ftc-away' width='80' height='92'></canvas></div>" +
-    "<div class='win'>" + (w ? "🏆 " + T("wins", { t: CONFIG.teams[w].name }) : "🤝 " + T("draw")) + "</div>" +
-    "<div class='ser'>" + T("seriesLine", { hn: CONFIG.teams.home.name, h: state.series.home, a: state.series.away, an: CONFIG.teams.away.name }) + (state.series.draw ? " · 🤝 " + state.series.draw : "") + "</div>" +
+    "<div class='win'>" + (w ? "🏆 " + T("wins", { t: tName(w) }) : "🤝 " + T("draw")) + "</div>" +
+    "<div class='ser'>" + T("seriesLine", { hn: tName("home"), h: state.series.home, a: state.series.away, an: tName("away") }) + (state.series.draw ? " · 🤝 " + state.series.draw : "") + "</div>" +
     (motm ? "<div class='motm'>⭐ " + T("motm") + ": @" + esc(motm.name) + " · " + Math.round(motm.mPts) + "</div>" : "") +
-    "<div class='top'><div style='color:#ffd75e;font-size:11px;letter-spacing:1px'>" + T("top3") + "</div>" + top.map((f, i) => "<div>" + ["🥇", "🥈", "🥉"][i] + " @" + esc(f.name) + " (" + CONFIG.teams[f.team].short + ") · " + Math.round(f.mPts) + "</div>").join("") + "</div>" +
+    "<div class='top'><div style='color:#ffd75e;font-size:11px;letter-spacing:1px'>" + T("top3") + "</div>" + top.map((f, i) => "<div>" + ["🥇", "🥈", "🥉"][i] + " @" + esc(f.name) + " (" + tShort(f.team) + ") · " + Math.round(f.mPts) + "</div>").join("") + "</div>" +
     "<div class='nx' id='ft-next'></div>";
   TEAMS.forEach(t => { const c = $("ftc-" + t); if (c) c.getContext("2d").drawImage($("crest-" + t), 0, 0); });
   P.style.display = "block";
   showPop(T("ft"), "", w || "", 1.6, "small", 4);
 }
-function newMatch() {
-  state.goals.home = state.goals.away = 0; state.minute = 0; state.phaseT = 0; state.matchNo++;
-  TEAMS.forEach(t => { state.chant[t] = 10; state.throws[t].length = 0; state.offence[t] = 0; state.banUntil[t] = -1; });
+function newMatch(restart) {
+  state.goals.home = state.goals.away = 0; state.minute = 0; state.phaseT = 0; if (!restart) state.matchNo++;
+  state.penQ.length = 0; state.pen = null; ballFly = null; state.lastShot = null;
+  TEAMS.forEach(t => { state.chant[t] = 10; state.throws[t].length = 0; state.offence[t] = 0; state.banUntil[t] = -1; state.coolUntil[t] = -1; });
   state.momentum = 0; users.forEach(f => { f.mPts = 0; f.mGiftD = 0; f.mGiftPts = 0; });
-  $("ftpanel").style.display = "none"; resetPositions(); state.phase = "play"; sfx("whistle", 2); showPop(T("start"), "#" + state.matchNo, "", 1.4, "small", 1);
+  $("ftpanel").style.display = "none"; resetPositions(); state.phase = "play"; sfx("whistle", 2); showPop(T("start"), T("matchN", { n: state.matchNo }), "", 2.2, "small", 1);
 }
 /* ================= 2D overlay: popups, confetti, hearts, comic bursts ================= */
 const fx2 = $("fx"), g2 = fx2.getContext("2d");
@@ -269,12 +289,12 @@ function updateFX2(dt) {
     pe.style.opacity = Math.min(inK, outK); pe.style.transform = "scale(" + sc.toFixed(3) + ") rotate(-3deg)"; } else { pe.style.opacity = 0; if (popQ.length) { const q = popQ.shift(); popPrio = 0; showPop.apply(null, q); } }
   // celebration prompt after a goal
   const ce = $("celebrate"), ck = state.time - celebT;
-  if (ck > 1.2 && ck < 9 && celebTeam) { if (ce.dataset.team !== celebTeam + CONFIG.lang) { ce.innerHTML = "<div>" + T("celebH") + "</div><div class='a'>" + T("celebA", { t: CONFIG.teams[other(celebTeam)].short }) + "</div>"; ce.dataset.team = celebTeam + CONFIG.lang; } ce.style.opacity = Math.min(1, (ck - 1.2) * 3, (9 - ck) * 2); ce.style.transform = "translateY(" + (Math.sin(ck * 4) * 3).toFixed(1) + "px)"; } else ce.style.opacity = 0;
+  if (ck > 1.2 && ck < 9 && celebTeam) { if (ce.dataset.team !== celebTeam + CONFIG.lang) { ce.innerHTML = "<div>" + T("celebH") + "</div><div class='a'>" + T("celebA", { t: tShort(other(celebTeam)) }) + "</div>"; ce.dataset.team = celebTeam + CONFIG.lang; } ce.style.opacity = Math.min(1, (ck - 1.2) * 3, (9 - ck) * 2); ce.style.transform = "translateY(" + (Math.sin(ck * 4) * 3).toFixed(1) + "px)"; } else ce.style.opacity = 0;
   const cardK = state.time - cardT; $("card").style.background = cardColor; $("card").style.opacity = cardK < 2.2 ? Math.min(1, cardK * 4, (2.2 - cardK) * 3) : 0; $("card").style.transform = "rotate(" + (8 + Math.sin(cardK * 6) * 4) + "deg)";
   // team-pick prompt + attack banner (game-time driven)
   const pk2 = state.time - promptT; $("prompt").style.opacity = pk2 < promptDur ? Math.min(1, pk2 * 5, (promptDur - pk2) * 4) : 0;
   const at = $("attack"); const att = state.phase === "play" ? TEAMS.find(inAttack) : null;
-  if (att) { const txt = T("attack", { t: CONFIG.teams[att].name }) + " " + Math.round(goalChance(att) * 100) + "%"; if (at.textContent !== txt) at.textContent = txt; at.className = att; at.style.opacity = 0.95; } else at.style.opacity = 0;
+  if (att) { const txt = T("attack", { t: tName(att) }) + " " + Math.round(goalChance(att) * 100) + "%"; if (at.textContent !== txt) at.textContent = txt; at.className = att; at.style.opacity = 0.95; } else at.style.opacity = 0;
 }
 /* ================= HUD + labels ================= */
 const labelPool = [];
@@ -311,11 +331,11 @@ function refreshHUD() {
   $("goals").textContent = state.goals.home + " - " + state.goals.away;
   const stop = state.minute >= CONFIG.matchMinutes && (state.penQ.length || state.phase === "penalty");
   $("clock").textContent = state.phase === "ft" ? T("ft") : (state.minute >= CONFIG.matchMinutes ? "90+'" : Math.floor(state.minute) + "'") + (stop ? " " + T("stoppage") : "");
-  $("serieschip").textContent = T("series", { h: state.series.home, a: state.series.away }) + (state.series.draw ? " (" + state.series.draw + "🤝)" : "");
+  $("serieschip").textContent = T("series", { m: state.matchNo, h: state.series.home, a: state.series.away }) + (state.series.draw ? " (" + state.series.draw + "🤝)" : "");
   TEAMS.forEach(t => {
     const v = Math.round(state.chant[t]); $("fill-" + t).style.width = v + "%";
     $("lbl-" + t).innerHTML = (v > 70 ? "🔥 " : "📣 ") + v + "%<b>" + T("chance", { p: Math.round(goalChance(t) * 100) }) + "</b>";
-    $("cnt-" + t).textContent = teamFans[t].length + " " + T("fans");
+    const off = Math.min(3, state.offence[t]); $("cnt-" + t).textContent = teamFans[t].length + " " + T("fans") + (off ? " · ⚠️" + ["💬", "🟨", "⛔"].slice(0, off).join("") : "");   // visible warning chips
   });
   $("knob").style.left = (50 + state.momentum * 46) + "%";
   // rankings: this match (8 s) / whole night (4 s)
@@ -329,16 +349,19 @@ function refreshHUD() {
   const R = CONFIG.throwRule;
   $("risk").innerHTML = TEAMS.map(t => {
     const n = state.throws[t].filter(x => state.time - x <= R.window).length, off = state.offence[t], ban = state.banUntil[t] - state.time;
-    if (ban > 0) return "<div class='ban'>⛔ " + CONFIG.teams[t].short + " " + T("banned", { t: "", s: Math.ceil(ban) }).trim() + "</div>";
-    const next = off === 0 ? T("warn1") : off === 1 ? T("warn2") : T("warn3");
-    return "<div class='" + (n >= R.limit - 1 ? "hot" : "") + "'>🍾 " + CONFIG.teams[t].short + " " + n + "/" + R.limit + " → " + next + "</div>";
+    if (ban > 0) return "<div class='ban'>⛔ " + tShort(t) + " " + T("banned", { t: "", s: Math.ceil(ban) }).trim() + "</div>";
+    const cool = state.coolUntil[t] - state.time;
+    if (cool > 0) return "<div>🍾 " + tShort(t) + " ⏳ " + Math.ceil(cool) + (EN() ? " s" : " sn") + "</div>";
+    const next = nextOffence(t);
+    return "<div class='" + (n >= R.limit - 1 ? "hot" : "") + "'>" + (n >= R.limit - 1 ? "👀 " : "🍾 ") + tShort(t) + " " + n + "/" + R.limit + " → " + next + "</div>";
   }).join("");
-  $("penq").innerHTML = state.penQ.map(p => "<div>" + T("penQ", { t: CONFIG.teams[p.team].short }) + " · @" + escH(p.by) + "</div>").join("");
+  $("penq").innerHTML = state.penQ.map(p => "<div>" + T("penQ", { t: tShort(p.team) }) + " · @" + escH(p.by) + "</div>").join("");
   // batched gift ticker
   const recent = [...giftAgg.values()].filter(a => state.time - a.t < 3).sort((a, b) => b.t - a.t).slice(0, 2);
   $("gifts").innerHTML = recent.map(a => "<div>🎁 @" + escH(a.f.name) + " · " + escH(a.gname) + (a.count > 1 ? " <b>x" + a.count + "</b>" : "") + "</div>").join("");
   for (const [k, a] of giftAgg) if (state.time - a.t > 10) giftAgg.delete(k);
-  if (state.phase === "ft") { const nx = $("ft-next"); if (nx) nx.textContent = T("next", { s: Math.max(0, Math.ceil(12 - state.phaseT)) }); }
+  if (state.phase === "ft") { const nx = $("ft-next"); if (nx) nx.textContent = T("next", { s: Math.max(0, Math.ceil(CONFIG.ftSec - state.phaseT)) }); }
+  if (liveState === "fail") setLive("fail", "tick");
   refreshSoundUI();
   if (state.time - saveT > 10) { saveT = state.time; persist(); }
 }
@@ -347,7 +370,14 @@ function applyLang() {
   $("lg-home").textContent = T("lgH"); $("lg-home2").textContent = T("lgH2"); $("lg-away").textContent = T("lgA"); $("lg-away2").textContent = T("lgA2");
   $("acts").innerHTML = T("acts").map(a => "<div><i>" + a[0] + "</i>" + a[1] + "<em>" + a[2] + "</em></div>").join("");
   $("rule").textContent = T("throwRule"); $("soundpill").textContent = T("soundTap");
-  TEAMS.forEach(t => { $("name-" + t).firstChild.textContent = CONFIG.teams[t].name; });
+  TEAMS.forEach(t => { $("name-" + t).firstChild.textContent = tName(t); });
+  const U = T("ui"); document.documentElement.lang = CONFIG.lang;
+  document.querySelectorAll("[data-i]").forEach(el => { const v = U[el.dataset.i]; if (typeof v === "string") { if (el.dataset.html) el.innerHTML = v; else el.textContent = v; } });
+  $("mute").title = U.mute; $("panel-btn").title = U.panelBtn; $("btn-pause").textContent = state.paused ? U.resume : U.pause;
+  $("help").innerHTML = "<h3>" + U.helpT + "</h3>" + U.help.map(h => "<div><b>" + h[0] + "</b> " + h[1] + "</div>").join("") + "<div class='c'>" + U.close + " · " + CONFIG.version + "</div>";
+  const chips = $("chips"); chips.innerHTML = "";
+  (EN() ? ["1", "2", "Come on!", "drum", "torch", "bottle", "lighter"] : ["1", "2", "Haydi!", "davul", "meşale", "şişe", "çakmak"]).forEach(k => { const b = document.createElement("button"); b.textContent = k; b.onclick = () => { $("fake-comment").value = k; $("btn-send").click(); }; chips.appendChild(b); });
+  $("celebrate").dataset.team = "";
   if (liveState) setLive(liveState);
 }
 function drawCrest(t) {
@@ -362,9 +392,11 @@ function drawCrest(t) {
 
 
 /* ================= bots (demo crowd, capped joins) ================= */
-const BOT_NAMES = ["kartal_34", "bosphorus_boy", "cimbom_değil", "ayse.k", "mert1903", "deniz_tr", "emre_ist", "zeynep.fan", "burak_10", "selin_s", "can.boga", "ozan_k", "elif_99", "kerem7", "ece.live", "hakan_dj", "baris.t", "melis_m", "arda_g", "sinan.kaleci", "tuba_x", "volkan.def", "irem_ii", "koray_k", "ahmet_usta", "nehir_n", "efe_bjk", "yusuf.y", "gizem.g", "onur_on", "derya.d", "tolga_tt", "ceren.cc", "serkan_s", "pinar.p", "ugur_u", "berk_b", "duru.d", "kaan_k", "aslı_a"];
+const BOT_NAMES = ["kartal_34", "bosphorus_boy", "sarıyer.can", "ayse.k", "mert1903", "deniz_tr", "emre_ist", "zeynep.fan", "burak_10", "selin_s", "can.boga", "ozan_k", "elif_99", "kerem7", "ece.live", "hakan_dj", "baris.t", "melis_m", "arda_g", "sinan.kaleci", "tuba_x", "volkan.def", "irem_ii", "koray_k", "ahmet_usta", "nehir_n", "efe_bjk", "yusuf.y", "gizem.g", "onur_on", "derya.d", "tolga_tt", "ceren.cc", "serkan_s", "pinar.p", "ugur_u", "berk_b", "duru.d", "kaan_k", "aslı_a"];
 let botN = 0;
-const botName = i => BOT_NAMES[i % BOT_NAMES.length] + (i >= BOT_NAMES.length ? "_" + Math.floor(i / BOT_NAMES.length) : "");
+const BOT_FIRST = ["ali", "veli", "cem", "nil", "ada", "eda", "oya", "umut", "sena", "ilker", "batu", "doga", "ege", "alp", "ipek", "lale", "gul", "tan", "tarik", "yigit", "beren", "cansu", "emir", "ozge", "rana", "sevda", "kutay", "mina", "aras", "ela"];
+const BOT_TAIL = ["34", ".ist", "1903", ".besiktas", "_tribun", ".kadikoy", "06", ".live", "_bjk", ".sahil", "35", "_kartal", ".fan", "07", "_izmir"];
+const botName = i => i < BOT_NAMES.length ? BOT_NAMES[i] : (() => { const j = i - BOT_NAMES.length, F = BOT_FIRST.length, k = Math.floor(j / F); return BOT_FIRST[j % F] + BOT_TAIL[k % BOT_TAIL.length] + (k >= BOT_TAIL.length ? "x".repeat(Math.floor(k / BOT_TAIL.length)) : ""); })();
 function botEvent() {
   const r = Math.random(), joinedAll = teamFans.home.concat(teamFans.away).filter(f => String(f.id).startsWith("bot"));
   if (botN < CONFIG.demo.maxJoins && (joinedAll.length < 24 || r < 0.08)) {
@@ -377,7 +409,7 @@ function botEvent() {
   const f = joinedAll[Math.floor(Math.random() * joinedAll.length)];
   const ce = state.time - celebT < 8 && celebTeam;
   if (ce && f.team === celebTeam && Math.random() < 0.3) { handleLiveEvent({ type: "chat", userId: f.id, username: f.name, comment: Math.random() < 0.5 ? "davul" : "meşale" }); return; }
-  const cautious = state.throws[f.team].filter(x => state.time - x <= CONFIG.throwRule.window).length >= CONFIG.throwRule.limit - 1 || state.time < state.banUntil[f.team];
+  const cautious = state.throws[f.team].filter(x => state.time - x <= CONFIG.throwRule.window).length >= CONFIG.throwRule.limit - 1 || state.time < state.banUntil[f.team] || state.time < state.coolUntil[f.team];
   if (ce && f.team !== celebTeam && !cautious && Math.random() < 0.1) { handleLiveEvent({ type: "chat", userId: f.id, username: f.name, comment: Math.random() < 0.5 ? "şişe" : "çakmak" }); return; }
   if (r < 0.55) { const lines = f.team === "home" ? ["Haydi Kartal!", "En büyük biziz!", "Vur gol!", "Hadi çocuklar", "Şampiyon!", "Ole ole", "Bu akşam bizim"] : ["Deplasmanda biz varız!", "Vur!", "Hadi!", "Gol gol gol", "Kazanacağız", "Ole!"];
     handleLiveEvent({ type: "chat", userId: f.id, username: f.name, comment: lines[Math.floor(Math.random() * lines.length)] }); }
@@ -392,12 +424,19 @@ window.__seedCrowd = seedCrowd;
 
 /* ================= Playroom TikTok LIVE bridge (?live=1) with honest status ================= */
 let liveState = null, lastLiveEvt = -1, liveConnectedAt = -1;
+let liveTry = 0, liveRetryAt = 0, liveTimer = null, liveHooked = false; window.__liveAttempts = [];
+const RETRY_SCALE = +(Q.get("retryScale") || 1);   // test hook: shrink the backoff delays
 function setLive(st, extra) {
-  liveState = st; window.__liveStatus = st;
+  const tick = extra === "tick"; liveState = st; window.__liveStatus = st;
   const el = $("livepill"); el.style.display = "block";
-  const txt = { connecting: T("liveConnecting"), ok: T("liveOk"), fail: T("liveFail"), lost: T("liveLost"), quiet: T("liveQuiet", { s: extra || 90 }) }[st] || st;
-  el.textContent = txt; el.className = st === "fail" || st === "lost" ? "bad" : st === "quiet" ? "warn" : "";
-  if (st === "fail" || st === "lost") console.warn("[LIVE]", st);
+  let txt = { connecting: T("liveConnecting"), ok: T("liveOk"), fail: T("liveFail"), lost: T("liveLost"), quiet: T("liveQuiet", { s: tick ? 90 : extra || 90 }) }[st] || st;
+  const tap = (st === "fail" && liveTry >= CONFIG.live.maxTries) || st === "lost";
+  if (st === "fail" && !tap && liveRetryAt) txt += T("liveRetryIn", { s: Math.max(0, Math.ceil((liveRetryAt - performance.now()) / 1000)), i: liveTry, n: CONFIG.live.maxTries });
+  if (tap) txt += st === "lost" ? T("liveReload") : T("liveTap");
+  if (el.textContent !== txt) el.textContent = txt;
+  el.className = (st === "fail" || st === "lost" ? "bad" : st === "quiet" ? "warn" : "") + (tap ? " tap" : "");
+  window.__liveTap = tap;
+  if ((st === "fail" || st === "lost") && !tick) console.warn("[LIVE]", st);
 }
 function liveWatchdog() {
   if (liveState === "ok" || liveState === "quiet") {
@@ -406,24 +445,32 @@ function liveWatchdog() {
     else if (since <= 90 && liveState === "quiet") setLive("ok");
   }
 }
-async function tryConnectPlayroom() {
+async function tryConnectPlayroom(manual) {
   if (Q.get("live") !== "1") return;
+  if (manual) liveTry = 0;
+  clearTimeout(liveTimer); liveRetryAt = 0; liveTry++; window.__liveAttempts.push(performance.now());
   setLive("connecting");
   try {
-    const src = Q.get("bridgeSrc") || "https://unpkg.com/playroomkit/multiplayer.js";
-    await new Promise((res, rej) => { const s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = () => rej(new Error("bridge script failed to load")); document.head.appendChild(s); setTimeout(() => rej(new Error("bridge load timeout")), 20000); });
+    const src = window.__bridgeSrc || Q.get("bridgeSrc") || "https://unpkg.com/playroomkit/multiplayer.js";
+    document.querySelectorAll("script[data-bridge]").forEach(s => s.remove());
+    await new Promise((res, rej) => { const s = document.createElement("script"); s.dataset.bridge = "1"; s.src = src; s.onload = res; s.onerror = () => rej(new Error("bridge script failed to load")); document.head.appendChild(s); setTimeout(() => rej(new Error("bridge load timeout")), 20000); });
     const mod = window.Playroom || window.PlayroomKit || window;
     const insertCoin = mod.insertCoin || window.insertCoin, onTikTokLiveEvent = mod.onTikTokLiveEvent || window.onTikTokLiveEvent, onDisconnect = mod.onDisconnect || window.onDisconnect;
     if (typeof insertCoin !== "function" || typeof onTikTokLiveEvent !== "function") throw new Error("Playroom API not found");
     await Promise.race([insertCoin({ liveMode: "tiktok" }), new Promise((_, rej) => setTimeout(() => rej(new Error("insertCoin timeout")), 60000))]);
+    if (!liveHooked) { liveHooked = true;
     onTikTokLiveEvent((event) => { const d = (event && event.data) || event || {}; const raw = String((event && event.type) || d.type || "chat").toLowerCase();
       if (liveState !== "ok") setLive("ok");
       handleLiveEvent({ type: raw.includes("gift") ? "gift" : raw.includes("like") ? "like" : "chat", userId: d.userId || d.uniqueId || d.username, username: d.username || d.nickName || d.uniqueId || "viewer",
         comment: d.comment || d.content || "", giftName: d.giftName || "", diamondCount: d.diamondCount || d.giftValue || 1, repeatCount: d.repeatCount || 1, likeCount: d.likeCount || 1 }); });
     if (typeof onDisconnect === "function") onDisconnect(() => setLive("lost"));
-    window.addEventListener("offline", () => setLive("lost"));
+    window.addEventListener("offline", () => setLive("lost")); }
     liveConnectedAt = state.time; setLive("ok");
-  } catch (e) { setLive("fail"); console.warn("[Playroom] not connected:", e && e.message); }
+  } catch (e) {
+    console.warn("[Playroom] not connected (try " + liveTry + "):", e && e.message);
+    if (liveTry < CONFIG.live.maxTries) { const B = CONFIG.live.backoff, d = B[Math.min(liveTry - 1, B.length - 1)] * 1000 * RETRY_SCALE; liveRetryAt = performance.now() + d; liveTimer = setTimeout(() => tryConnectPlayroom(false), d); }
+    setLive("fail");
+  }
 }
 /* ================= camera, layout, loop, boot ================= */
 function fit() {
@@ -453,30 +500,36 @@ function updateCamera(dt) {
   camera.up.set(1, 0, 0);
   camera.position.lerp(camPos, Math.min(1, dt * 1.6)); camTarget.lerp(camLook, Math.min(1, dt * 1.6)); camera.lookAt(camTarget);
 }
-let hudAcc = 0;
-function step(dt) {
+let hudAcc = 0, fx2Acc = 0;
+function step(dt, noDraw) {
   state.time += dt;
   if (botOn) { botAcc += dt * (Number($("bot-rate").value) || 8); while (botAcc >= 1) { botAcc--; botEvent(); } }
   drumTick(); flushJoins(); flushPicks(); liveWatchdog();
   updateMatch(dt); updatePlayers(dt, state.time); updateFans(state.time); updateFX(dt, state.time); updateCity(state.time);
   [-1, 1].forEach(s => { const n = goals[s].net; if (n.userData.shake > 0) { n.userData.shake -= dt; n.scale.z = 1 + Math.sin(state.time * 40) * 0.15 * n.userData.shake; } else n.scale.z = 1; });
   if (crowdGain && !state.muted) crowdGain.gain.value = 0.04 + (state.chant.home + state.chant.away) / 200 * 0.22 + (state.phase === "celebrate" ? 0.15 : 0);
-  updateCamera(dt);
+  if (noDraw) { fx2Acc += dt; return; }
+  updateCamera(dt + fx2Acc);
   renderer.render(scene, camera);
-  updateLabels(); updateFX2(dt);
+  updateLabels(); updateFX2(dt + fx2Acc); fx2Acc = 0;
   hudAcc += dt; if (hudAcc > 0.2) { hudAcc = 0; refreshHUD(); }
 }
 window.__step = function (n, dt) { for (let i = 0; i < n; i++) step(dt || 1 / 30); };
+window.__soak = function (sec, dt) { dt = dt || 0.05; const n = Math.round(sec / dt); for (let i = 0; i < n; i++) step(dt, i < n - 1); };   // logic-only fast-forward for soak tests
 window.__state = state; window.__users = users; window.__pending = pending; window.__nightBook = nightBook;
 let lastT = 0;
-function tick(now) { const dt = Math.min(0.05, (lastT ? now - lastT : 16) / 1000); lastT = now; try { step(dt); } catch (e) { console.error(e); } requestAnimationFrame(tick); }
+// slow devices: up to 0.25 s per frame is simulated in ≤50 ms logic substeps and drawn once, so a 3-minute match stays 3 minutes (no slow motion);
+// longer gaps (hidden tab) are not fast-forwarded
+function tick(now) { const raw = Math.min(0.25, (lastT ? now - lastT : 16) / 1000); lastT = now;
+  if (!state.paused) try { const n = Math.ceil(raw / 0.05), d = raw / n; for (let i = 0; i < n; i++) step(d, i < n - 1); } catch (e) { console.error(e); }
+  requestAnimationFrame(tick); }
+function setPaused(p) { state.paused = p; $("btn-pause").textContent = p ? T("ui").resume : T("ui").pause; if (p) $("clock").textContent = "⏸ " + $("clock").textContent; }
+function toggleHelp(on) { $("help").classList.toggle("on", on === undefined ? !$("help").classList.contains("on") : on); }
 function setBot(on) { botOn = on; $("bot-toggle").checked = on; }
 function boot() {
   buildSky(); buildPitch(); buildStands(); buildCity(); buildFans(); buildPlayers(); buildFX();
   TEAMS.forEach(drawCrest); if (Q.get("lang") === "en") CONFIG.lang = "en"; applyLang(); fit();
   camera.up.set(1, 0, 0); camera.position.set(CAMX, CAMY, 0); camTarget.set(LOOKX, 0, 0); camera.lookAt(camTarget);
-  const chips = $("chips");
-  ["1", "2", "Haydi!", "davul", "meşale", "şişe", "çakmak"].forEach(k => { const b = document.createElement("button"); b.textContent = k; b.onclick = () => { $("fake-comment").value = k; $("btn-send").click(); }; chips.appendChild(b); });
   const who = () => { const n = $("fake-user").value.trim() || "pablo"; return { userId: "local:" + n.toLowerCase(), username: n }; };
   $("btn-send").onclick = () => handleLiveEvent(Object.assign({ type: "chat", comment: $("fake-comment").value }, who()));
   $("fake-comment").addEventListener("keydown", e => { if (e.key === "Enter") $("btn-send").click(); });
@@ -489,12 +542,20 @@ function boot() {
   $("bot-toggle").onchange = () => setBot($("bot-toggle").checked);
   $("mute").onclick = (e) => { e.stopPropagation(); if (!state.muted && audioState() !== "running") setMuted(false); else setMuted(!state.muted); };
   $("soundpill").onclick = (e) => { e.stopPropagation(); setMuted(false); };
-  $("stage").addEventListener("pointerdown", () => { if (!state.muted && audioState() !== "running") setMuted(false); });
+  // honest sound: if sound was requested before any gesture (?sound=1), the FIRST pointer or key gesture anywhere resumes it
+  const gesture = () => { if (!state.muted && audioState() !== "running") setMuted(false); };
+  window.addEventListener("pointerdown", gesture, true); window.addEventListener("keydown", gesture, true);
+  $("livepill").onclick = (e) => { e.stopPropagation(); if (liveState === "lost") location.reload(); else if (liveState === "fail") tryConnectPlayroom(true); };
+  $("btn-pause").onclick = () => setPaused(!state.paused);
+  $("btn-restart").onclick = () => { newMatch(true); };
+  $("help").onclick = () => toggleHelp(false);
+  if (Q.get("help") === "1") toggleHelp(true);
   $("btn-reset").onclick = () => { state.series = { home: 0, away: 0, draw: 0 }; nightBook.clear(); users.forEach(f => f.nPts = 0); persist(); refreshHUD(); };
   $("btn-newuser").onclick = () => { $("fake-user").value = "izleyici_" + Math.floor(Math.random() * 9000 + 1000); };
   $("panel-btn").onclick = (e) => { e.stopPropagation(); document.body.classList.toggle("panel-hidden"); fit(); };
   window.addEventListener("keydown", e => { if (/input|textarea/i.test(e.target.tagName)) return; const k = e.key.toLowerCase();
-    if (k === "h") { document.body.classList.toggle("panel-hidden"); fit(); } else if (k === "m") setMuted(!state.muted); else if (k === "l") { CONFIG.lang = CONFIG.lang === "tr" ? "en" : "tr"; applyLang(); } });
+    if (k === "h") { document.body.classList.toggle("panel-hidden"); fit(); } else if (k === "m") { if (!state.muted && audioState() !== "running") setMuted(false); else setMuted(!state.muted); }
+    else if (k === "l") { CONFIG.lang = CONFIG.lang === "tr" ? "en" : "tr"; applyLang(); refreshHUD(); } else if (k === "p") setPaused(!state.paused); else if (e.key === "?" || k === "/") toggleHelp(); });
   window.addEventListener("resize", fit);
   if (IS_MOBILE || window.innerWidth < 860) { document.body.classList.add("panel-hidden"); fit(); }
   if (Q.get("panel") === "0") { document.body.classList.add("panel-hidden"); fit(); }
@@ -502,6 +563,7 @@ function boot() {
   if (!CLIP && Q.get("live") !== "1" && Q.get("bot") !== "1" && Q.get("demo") !== "0") {
     $("start").classList.add("on"); seedCrowd(CONFIG.demo.seed); introHold = true;
     $("start").addEventListener("click", () => { $("start").classList.remove("on"); setMuted(false); setBot(true); introHold = false; introStart = state.time; }, { once: true });
+    setTimeout(() => $("playbtn").focus(), 0);   // real <button>: Enter/Space start the game
   }
   if (Q.get("seed")) seedCrowd(Number(Q.get("seed")));
   if (Q.get("bot") === "1") setBot(true);
