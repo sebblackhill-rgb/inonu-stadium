@@ -468,7 +468,7 @@ async function tryConnectPlayroom(manual) {
     liveConnectedAt = state.time; setLive("ok");
   } catch (e) {
     console.warn("[Playroom] not connected (try " + liveTry + "):", e && e.message);
-    if (liveTry < CONFIG.live.maxTries) { const B = CONFIG.live.backoff, d = B[Math.min(liveTry - 1, B.length - 1)] * 1000 * RETRY_SCALE; liveRetryAt = performance.now() + d; liveTimer = setTimeout(() => tryConnectPlayroom(false), d); }
+    if (liveTry < CONFIG.live.maxTries) { const B = CONFIG.live.backoff, d = B[Math.min(liveTry - 1, B.length - 1)] * 1000 * RETRY_SCALE; (window.__liveDelays = window.__liveDelays || []).push(d); liveRetryAt = performance.now() + d; liveTimer = setTimeout(() => tryConnectPlayroom(false), d); }
     setLive("fail");
   }
 }

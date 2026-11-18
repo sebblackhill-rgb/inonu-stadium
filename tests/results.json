@@ -1,13 +1,23 @@
 [
  {
-  "name": "P4 action matching is whole-word/token only (22 cases)",
+  "name": "P4 action matching is whole-word/token only (27 cases)",
   "pass": true,
-  "info": "dumb→null · drummer→null · DRUM→drum · davul→drum · DAVUL!!→drum · davula vur→drum · torchlight→null · torch→torch · meşale→torch · mesale yak→torch · flareup→null · 🔥→torch · bottleneck→null · şişe→bottle · SISE AT→bottle · şişecam→null · LIGHTER→lighter · çakmak→lighter · cakmakli→null · sudan→null · subway→null · hello there→null"
+  "info": "dumb→null · drummer→null · DRUM→drum · davul→drum · DAVUL!!→drum · davula vur→drum · torchlight→null · torch→torch · meşale→torch · mesale yak→torch · flareup→null · 🔥→torch · bottleneck→null · şişe→bottle · SISE AT→bottle · şişecam→null · LIGHTER→lighter · çakmak→lighter · cakmakli→null · sudan→null · subway→null · hello there→null · durum→null · cakmakta→null · dumb davul→drum · su→null · water→null"
  },
  {
-  "name": "P4 team keywords are whole-token (12 cases)",
+  "name": "P4/E5 team joins use an explicit token list (21 cases: \"11\",\"1!\" join; \"1990\",\"1 dakika\" never)",
   "pass": true,
   "info": ""
+ },
+ {
+  "name": "E5 every accepted join token is logged once (\"11\" → 1 rule line for 2 joins)",
+  "pass": true,
+  "info": "{\"first\":1,\"second\":1,\"noSeat\":true,\"fullName\":true,\"sample\":\"+2 EV SAHİBİ: @tok1, @tok2 / ✅ “11” = EV SAHİBİ tribünü\"}"
+ },
+ {
+  "name": "A6 join lines use the full end name (EV SAHİBİ / DEPLASMAN), not EV/DEP",
+  "pass": true,
+  "info": "+2 EV SAHİBİ: @tok1, @tok2 / ✅ “11” = EV SAHİBİ tribünü"
  },
  {
   "name": "P4 \"dumb\"/\"drummer\" comments do not hit the drum (end-to-end)",
@@ -37,32 +47,57 @@
   "pass": true
  },
  {
-  "name": "P1 gift during a shot in flight → penalty still taken",
-  "pass": true
- },
- {
-  "name": "P1 gift at 90' → stoppage-time penalty taken before full time",
-  "pass": true
- },
- {
-  "name": "P1 gift during full-time ceremony → penalty carried into next match",
+  "name": "E1(b) two Lion gifts in one celebration → two penalties, in arrival order; a 3rd only adds chant",
   "pass": true,
-  "info": "{\"q\":1,\"saw\":true,\"match\":2}"
+  "info": "{\"q\":[\"baris.t\",\"arda_g\"],\"order\":[\"baris.t\",\"arda_g\"],\"names\":[\"baris.t\",\"arda_g\"]}"
+ },
+ {
+  "name": "E1(d) gift during a shot in flight → the shot resolves first, then the penalty is taken",
+  "pass": true
+ },
+ {
+  "name": "E1(c) gift just before 90' → its penalty is taken in stoppage time, before MAÇ BİTTİ",
+  "pass": true
+ },
+ {
+  "name": "E1(c) gift during the full-time ceremony → no penalty after MAÇ BİTTİ or in the next match",
+  "pass": true,
+  "info": "{\"q\":0,\"saw\":false,\"ftVisible\":16,\"kick\":\"MAÇ 2\",\"match\":2}"
+ },
+ {
+  "name": "E9 full-time ceremony stays up 15–20 s, kickoff shows the match counter",
+  "pass": true,
+  "info": "{\"q\":0,\"saw\":false,\"ftVisible\":16,\"kick\":\"MAÇ 2\",\"match\":2}"
  },
  {
   "name": "Series score kept across matches, ceremony panel closes for next match",
   "pass": true,
-  "info": "{\"series\":{\"home\":0,\"away\":0,\"draw\":1},\"matchNo\":2,\"ftHidden\":true}"
+  "info": "{\"series\":{\"home\":1,\"away\":0,\"draw\":0},\"matchNo\":2,\"ftHidden\":true}"
  },
  {
   "name": "Full-time ceremony shows score, winner/draw, series, fan of the match, top 3, countdown",
   "pass": true,
-  "info": "MAÇ SONU | 0 - 0 | 🤝 BERABERE! | Seri: KARTALLAR 0 – 0 MİSAFİR · 🤝 2 | BU MAÇIN EN İYİLERİ | SONRAKİ MAÇ 12"
+  "info": "MAÇ SONU | 0 - 0 | 🤝 BERABERE! | Seri: KARTALLAR 1 – 0 MİSAFİR · 🤝 1 | BU MAÇIN EN İYİLERİ | SONRAKİ MAÇ 16"
+ },
+ {
+  "name": "E7 👀 \"ref is watching\" cue appears after the 2nd throw in a window (not the 1st)",
+  "pass": true,
+  "info": "👀 HAKEM İZLİYOR"
+ },
+ {
+  "name": "E7 6 rapid throws → exactly one warning; cooldown throws neither count nor hurt the rivals",
+  "pass": true,
+  "info": "{\"warnings\":1,\"risk\":\"🍾 EV 0/3 → SÖZLÜ UYARI / 🍾 DEP ⏳ 19 sn\"}"
  },
  {
   "name": "P5 1st offence = verbal warning only (no chant cost)",
   "pass": true,
   "info": "{\"awayChantPenalties\":0,\"pop\":\"SÖZLÜ UYARI\"}"
+ },
+ {
+  "name": "C12 warnings visible as chips under the team (💬🟨)",
+  "pass": true,
+  "info": "21 taraftar · ⚠️💬🟨"
  },
  {
   "name": "P5 2nd offence = yellow card −15",
@@ -76,12 +111,12 @@
  {
   "name": "P5 rule explained on screen (legend + live risk meter)",
   "pass": true,
-  "info": "⚠️ 20 sn'de 3 atış: 1. sözlü uyarı · 2. sarı kart −15 · 3. atış yasağı 30 sn | 🍾 EV 0/3 → SÖZLÜ UYARI / 🍾 DEP 0/3 → ATIŞ YASAĞI"
+  "info": "⚠️ 20 sn'de 3 atış: 1. sözlü uyarı · 2. sarı kart −15 · 3. atış yasağı 30 sn · uyarıdan sonra 20 sn atış sayılmaz | 🍾 EV 0/3 → SÖZLÜ UYARI / 🍾 DEP 0/3 → ATIŞ YASAĞI"
  },
  {
   "name": "Rankings: 31,500 diamonds of gifts capped (≤60 pts/match), a steady chanter can match it",
   "pass": true,
-  "info": "{\"gift\":60,\"chat\":70,\"nightGift\":60}"
+  "info": "{\"gift\":60,\"chat\":70,\"nightGift\":60,\"gname\":\"gizem.g\"}"
  },
  {
   "name": "Separate per-match and all-night boards (rotating)",
@@ -89,9 +124,14 @@
   "info": "🎤 BU MAÇ / ⭐ GECENİN TARAFTARLARI"
  },
  {
-  "name": "Join log batched (12 joins → ≤2 lines)",
+  "name": "E8 per-match board resets at kickoff, all-night board keeps the night's top gifter",
   "pass": true,
-  "info": "+6 DEP: @batch0, @batch2 +4 / +6 EV: @batch1, @batch3 +4"
+  "info": "{\"match\":\"🥇 nehir_n / 6\",\"night\":\"🥇 derya.d / 70 / 🥈 zeynep.fan / 60 / 🥉 baris.t / 60 / 4. arda_g / 60\"}"
+ },
+ {
+  "name": "Join log batched (12 joins → ≤2 lines)",
+  "pass": false,
+  "info": "+6 DEPLASMAN: @batch0, @batch2 +4 / +6 EV SAHİBİ: @batch1, @batch3 +4 / ✅ “1” = EV SAHİBİ tribünü"
  },
  {
   "name": "Repeated gifts batched into one ticker line with a counter",
@@ -99,14 +139,19 @@
   "info": "🎁 @mert1903 · Rose x24"
  },
  {
-  "name": "Name labels capped and non-overlapping",
+  "name": "D1 name labels capped at 10 and non-overlapping",
   "pass": true,
-  "info": "{\"n\":8,\"ov\":0}"
+  "info": "{\"n\":9,\"ov\":0}"
  },
  {
   "name": "Goal chance from chant shown on the meter",
   "pass": true,
-  "info": "🔥 79%\n⚽ %74"
+  "info": "🔥 79%\n⚽ %72"
+ },
+ {
+  "name": "C10 a silent stadium never shoots (60 s at 0% chant = 0 shots), a loud one does",
+  "pass": true,
+  "info": "{\"quiet\":0,\"loud\":4}"
  },
  {
   "name": "Demo joins capped",
@@ -121,15 +166,75 @@
  {
   "name": "P2 failed live bridge shows a visible warning",
   "pass": true,
-  "info": "⚠️ TikTok LIVE bağlanamadı — yorumlar gelmiyor"
+  "info": "⚠️ TikTok LIVE bağlanamadı — yorumlar gelmiyor · 3 sn sonra tekrar (1/5)"
  },
  {
   "name": "P2 connected bridge shows OK, and a disconnect shows a warning",
   "pass": true,
-  "info": "⚠️ TikTok LIVE bağlantısı koptu"
+  "info": "⚠️ TikTok LIVE bağlantısı koptu · yeniden bağlanmak için dokun"
  },
  {
   "name": "No console errors on live pages",
+  "pass": true,
+  "info": ""
+ },
+ {
+  "name": "E3 failed bridge retries with a growing backoff, stops after 5 tries, then offers tap-to-retry",
+  "pass": false,
+  "info": "{\"tries\":5,\"gaps\":[772,507,1502,3002],\"tap\":true,\"st\":\"fail\",\"txt\":\"⚠️ TikTok LIVE bağlanamadı — yorumlar gelmiyor · tekrar denemek için dokun\"} | mid: ⚠️ TikTok LIVE bağlanamadı — yorumlar gelmiyor · 1 sn sonra tekrar (1/5)"
+ },
+ {
+  "name": "E3 after the bridge comes back, tapping retry connects",
+  "pass": true,
+  "info": "🟢 TikTok LIVE bağlı"
+ },
+ {
+  "name": "E2 ?sound=1 before any gesture shows 🔇 + hint; first click anywhere → 🔊 and running",
+  "pass": false,
+  "info": "{\"e2a\":{\"st\":\"running\",\"icon\":\"🔊\",\"pill\":\"none\"},\"e2b\":{\"st\":\"running\",\"ctx\":\"running\",\"icon\":\"🔊\"}}"
+ },
+ {
+  "name": "E2 ?live=1&sound=1: first key press resumes sound without needing M",
+  "pass": false,
+  "info": "{\"before\":\"running\",\"after\":{\"ctx\":\"running\",\"icon\":\"🔊\"}}"
+ },
+ {
+  "name": "E10 English mode: no Turkish chrome anywhere (start screen, panel, HUD, legend)",
+  "pass": true,
+  "info": "KARTALLAR | 20 fans | 0 - 0 | 0' | VISITORS | 20 fans | İNÖNÜ STADIUM · ISTANBUL | MATCH 1 · SERIES 2-0 (2🤝) | 📣 0% | ⚽ 10% | MOMENTUM | 📣 0% | ⚽ 10% | 🎤 THIS MATCH | 🍾 HOME 0/3 → VERBAL WARNING "
+ },
+ {
+  "name": "E10 Turkish mode: no English chrome left (gift names/API excepted)",
+  "pass": true,
+  "info": "KARTALLAR | 20 taraftar | 0 - 0 | 0' | MİSAFİR | 20 taraftar | İNÖNÜ STADI · İSTANBUL | MAÇ 1 · SERİ 2-0 (2🤝) | 📣 0% | ⚽ %10 | MOMENTUM | 📣 0% | ⚽ %10 | 🎤 BU MAÇ | 🍾 EV 0/3 → SÖZLÜ UYARI | 🍾 DEP"
+ },
+ {
+  "name": "D5 PLAY is a real focused <button>; Enter starts the match",
+  "pass": true,
+  "info": "{\"playIsButton\":{\"tag\":\"BUTTON\",\"focused\":\"playbtn\"},\"started\":{\"phase\":\"celebrate\",\"startHidden\":true}}"
+ },
+ {
+  "name": "D8 test panel pause freezes the match, resume continues, restart resets the score",
+  "pass": true,
+  "info": "{\"frozen\":true,\"resumed\":true,\"goals\":0,\"sameNo\":true,\"minute\":0}"
+ },
+ {
+  "name": "D7 \"?\" opens a help overlay documenting keys and URL params",
+  "pass": true,
+  "info": "KISAYOLLAR VE URL AYARLARI / M ses aç/kapa / L dil TR/EN / H test paneli"
+ },
+ {
+  "name": "No page errors in translation/pause/help run",
+  "pass": true,
+  "info": ""
+ },
+ {
+  "name": "E6 30-min bot soak: fan count plateaus at the cap, unique names with no recycled _N suffix, no slowdown trend",
+  "pass": true,
+  "info": "{\"n10\":70,\"n30\":70,\"cap\":70,\"t10\":2,\"t30\":2.3,\"dup\":0,\"suffixed\":[],\"matches\":10}"
+ },
+ {
+  "name": "No console errors during soak",
   "pass": true,
   "info": ""
  },
@@ -149,8 +254,13 @@
   "info": ""
  },
  {
+  "name": "D10 no console warnings on a normal run (flatShading warning gone)",
+  "pass": true,
+  "info": ""
+ },
+ {
   "name": "Emulated iPhone 13: tap PLAY, game runs, no console errors",
   "pass": true,
-  "info": "{\"phase\":\"shot\",\"users\":43,\"v\":\"inonu-v2\",\"audio\":\"running\"} "
+  "info": "{\"phase\":\"celebrate\",\"users\":47,\"v\":\"inonu-v3\",\"audio\":\"running\"} "
  }
 ]

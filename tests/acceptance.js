@@ -6,7 +6,13 @@ const results = []; const ok = (name, pass, info) => { results.push({ name, pass
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 async function page(b, q, opts = {}) {
   const p = await b.newPage(); if (opts.phone) await p.emulate(puppeteer.KnownDevices['iPhone 13']); else await p.setViewport({ width: 540, height: 960 });
-  p.errs = []; p.on('pageerror', e => p.errs.push('pageerror ' + e.message)); p.on('console', m => { if (m.type() === 'error') p.errs.push('console.error ' + m.text()); });
+  p.errs = []; p.warns = []; p.on('pageerror', e => p.errs.push('pageerror ' + e.message)); p.on('console', m => { if (m.type() === 'error') p.errs.push('console.error ' + m.text()); if (m.type() === 'warn' || m.type() === 'warning') p.warns.push(m.text()); });
+  if (opts.autoplay) await p.evaluateOnNewDocument(() => {   // Chrome ignores --autoplay-policy under automation, so model its rule: no audio until a real user activation
+    const AC = window.AudioContext;
+    window.AudioContext = window.webkitAudioContext = class extends AC {
+      constructor(...a) { super(...a); if (!navigator.userActivation.hasBeenActive) super.suspend(); }
+      resume() { return navigator.userActivation.hasBeenActive ? super.resume() : Promise.resolve(); } };
+  });
   await p.goto(BASE + q, { waitUntil: 'load' }); return p;
 }
 (async () => {
@@ -17,14 +23,21 @@ async function page(b, q, opts = {}) {
 
   // P4 word matching
   const cases = [['dumb', null], ['drummer', null], ['DRUM', 'drum'], ['davul', 'drum'], ['DAVUL!!', 'drum'], ['davula vur', 'drum'], ['torchlight', null], ['torch', 'torch'], ['meşale', 'torch'], ['mesale yak', 'torch'],
-    ['flareup', null], ['🔥', 'torch'], ['bottleneck', null], ['şişe', 'bottle'], ['SISE AT', 'bottle'], ['şişecam', null], ['LIGHTER', 'lighter'], ['çakmak', 'lighter'], ['cakmakli', null], ['sudan', null], ['subway', null], ['hello there', null]];
+    ['flareup', null], ['🔥', 'torch'], ['bottleneck', null], ['şişe', 'bottle'], ['SISE AT', 'bottle'], ['şişecam', null], ['LIGHTER', 'lighter'], ['çakmak', 'lighter'], ['cakmakli', null], ['sudan', null], ['subway', null], ['hello there', null], ['durum', null], ['cakmakta', null], ['dumb davul', 'drum'], ['su', null], ['water', null]];
   const m = await p.evaluate((cs) => cs.map(([c]) => __match(c).action), cases);
   const bad = cases.filter((c, i) => m[i] !== c[1]).map((c, i) => c[0]);
   ok('P4 action matching is whole-word/token only (' + cases.length + ' cases)', bad.length === 0, bad.length ? 'wrong: ' + bad.join(', ') : cases.map(c => c[0] + '→' + c[1]).join(' · '));
-  const tcases = [['1', 'home'], ['2', 'away'], ['10', null], ['12', null], ['ev sahibi', 'home'], ['evet', null], ['deplasman', 'away'], ['devam', null], ['1 2', null], ['2 dep!', 'away'], ['home', 'home'], ['homework', null]];
+  const tcases = [['1', 'home'], ['2', 'away'], ['10', null], ['12', null], ['ev sahibi', 'home'], ['evet', null], ['deplasman', 'away'], ['devam', null], ['1 2', null], ['2 dep!', 'away'], ['home', 'home'], ['homework', null], ['11', 'home'], ['1!', 'home'], ['111', 'home'], ['22', 'away'], ['1990', null], ['1 dakika', null], ['go home', null], ['⚫⚪', 'home'], ['🔥', null]];
   const tm = await p.evaluate((cs) => cs.map(([c]) => __match(c).team), tcases);
   const tbad = tcases.filter((c, i) => tm[i] !== c[1]).map(c => c[0]);
-  ok('P4 team keywords are whole-token (' + tcases.length + ' cases)', tbad.length === 0, tbad.join(', '));
+  ok('P4/E5 team joins use an explicit token list (' + tcases.length + ' cases: "11","1!" join; "1990","1 dakika" never)', tbad.length === 0, tbad.join(', '));
+  const jl = await p.evaluate(() => { const L = document.getElementById('log'); const has = s => [...L.children].some(x => x.textContent.includes(s));
+    E({ type: 'chat', userId: 'tok1', username: 'tok1', comment: '11' }); const first = [...L.children].filter(x => x.textContent.includes('“11”')).length;
+    E({ type: 'chat', userId: 'tok2', username: 'tok2', comment: '11' }); const second = [...L.children].filter(x => x.textContent.includes('“11”')).length;
+    E({ type: 'chat', userId: 'tok3', username: 'tok3', comment: '1 dakika' }); S(1.6);
+    return { first, second, noSeat: !__users.has('tok3'), fullName: has('EV SAHİBİ') && !/ EV tribün/.test(L.innerText), sample: L.innerText.split('\n').slice(0, 3).join(' / ') }; });
+  ok('E5 every accepted join token is logged once ("11" → 1 rule line for 2 joins)', jl.first === 1 && jl.second === 1 && jl.noSeat, JSON.stringify(jl));
+  ok('A6 join lines use the full end name (EV SAHİBİ / DEPLASMAN), not EV/DEP', jl.fullName, jl.sample);
   // drum via "dumb" should not queue a drum
   const dumb = await p.evaluate(() => { const f = teamFans.home[0]; const before = drumQ.home + drumLast.home; E({ type: 'chat', userId: f.id, username: f.name, comment: 'that was dumb' }); E({ type: 'chat', userId: f.id, username: f.name, comment: 'drummer boy' }); return drumQ.home + drumLast.home === before; });
   ok('P4 "dumb"/"drummer" comments do not hit the drum (end-to-end)', dumb);
@@ -58,64 +71,92 @@ async function page(b, q, opts = {}) {
   });
   ok('P1 Lion gift during a goal celebration queues a penalty', pen.queued === 1, pen.log.join());
   ok('P1 queued penalty is taken after the celebration (not lost)', pen.sawPen && pen.tookShot && pen.left === 0);
+  const pen1b = await p.evaluate(() => {   // E1(b): two gifts in one celebration -> documented rule: both queued (max 2/team), taken in arrival order
+    S(8); if (__state.phase !== 'play') S(8); __state.minute = 40; __state.ballZ = 13; shoot('away', true); S(1.5);
+    const a = teamFans.home[8], c = teamFans.home[9];
+    E({ type: 'gift', userId: a.id, username: a.name, giftName: 'Lion', diamondCount: 1500 }); E({ type: 'gift', userId: c.id, username: c.name, giftName: 'Lion', diamondCount: 1500 });
+    const g3 = teamFans.home[10]; E({ type: 'gift', userId: g3.id, username: g3.name, giftName: 'Lion', diamondCount: 1500 });   // 3rd = chant only
+    const q = __state.penQ.map(x => x.by); const order = []; let last = null;
+    for (let i = 0; i < 30 * 30 && order.length < 2; i++) { S(1 / 30); if (__state.phase === 'penalty' && __state.pen !== last) { last = __state.pen; order.push(__state.pen.by); } }
+    return { q, order, names: [a.name, c.name] }; });
+  ok('E1(b) two Lion gifts in one celebration → two penalties, in arrival order; a 3rd only adds chant', pen1b.q.length === 2 && pen1b.order.join() === pen1b.names.join(), JSON.stringify(pen1b));
   const pen2 = await p.evaluate(() => {
     S(8); if (__state.phase !== 'play') S(8);
     __state.ballZ = 13; shoot('away', false);                 // gift arrives while a shot is in the air
+    const seq = []; const oRes = shotResult, oStart = startPenalty; shotResult = (bf) => { seq.push(bf.team + ':result'); return oRes(bf); }; startPenalty = (q) => { seq.push(q.team + ':penalty'); return oStart(q); };
     const f = teamFans.home[5]; E({ type: 'gift', userId: f.id, username: f.name, giftName: 'Lion', diamondCount: 1500 });
     let saw = false; for (let i = 0; i < 30 * 12 && !saw; i++) { S(1 / 30); if (__state.phase === 'penalty' && __state.pen.team === 'home') saw = true; }
+    shotResult = oRes; startPenalty = oStart; const resolvedFirst = seq[0] === 'away:result' && seq[1] === 'home:penalty';
     // gift arriving at 90' → stoppage-time penalty before full time
     S(10); __state.minute = 89.99; const g = teamFans.away[6]; E({ type: 'gift', userId: g.id, username: g.name, giftName: 'Lion', diamondCount: 1500 });
     let sawStop = false, ftAfter = false; for (let i = 0; i < 30 * 20; i++) { S(1 / 30); if (__state.phase === 'penalty') sawStop = true; if (__state.phase === 'ft') { ftAfter = sawStop; break; } }
-    return { saw, sawStop, ftAfter };
+    return { saw, sawStop, ftAfter, resolvedFirst };
   });
-  ok('P1 gift during a shot in flight → penalty still taken', pen2.saw);
-  ok('P1 gift at 90\' → stoppage-time penalty taken before full time', pen2.sawStop && pen2.ftAfter);
-  // gift during the full-time ceremony carries to next match
-  const pen3 = await p.evaluate(() => { const f = teamFans.home[7]; E({ type: 'gift', userId: f.id, username: f.name, giftName: 'Lion', diamondCount: 1500 }); const q = __state.penQ.length; let saw = false; for (let i = 0; i < 30 * 20 && !saw; i++) { S(1 / 30); if (__state.phase === 'penalty') saw = true; } return { q, saw, match: __state.matchNo }; });
-  ok('P1 gift during full-time ceremony → penalty carried into next match', pen3.q === 1 && pen3.saw, JSON.stringify(pen3));
+  ok('E1(d) gift during a shot in flight → the shot resolves first, then the penalty is taken', pen2.saw && pen2.resolvedFirst);
+  ok('E1(c) gift just before 90\' → its penalty is taken in stoppage time, before MAÇ BİTTİ', pen2.sawStop && pen2.ftAfter);
+  // E1(c): nothing fires after MAÇ BİTTİ and nothing carries into the next match; FT ceremony holds 15-20 s, kickoff shows MAÇ n
+  const pen3 = await p.evaluate(() => { const m0 = __state.matchNo; const f = teamFans.home[7]; E({ type: 'gift', userId: f.id, username: f.name, giftName: 'Lion', diamondCount: 1500 }); const q = __state.penQ.length;
+    let saw = false, ftVisible = 0, kick = ''; for (let i = 0; i < 30 * 32; i++) { S(1 / 30); if (__state.phase === 'penalty') saw = true; if (__state.phase === 'ft' && document.getElementById('ftpanel').style.display === 'block') ftVisible += 1 / 30; if (!kick && __state.matchNo > m0) kick = document.getElementById('pop-sub').textContent; }
+    return { q, saw, ftVisible: Math.round(ftVisible * 10) / 10, kick, match: __state.matchNo }; });
+  ok('E1(c) gift during the full-time ceremony → no penalty after MAÇ BİTTİ or in the next match', pen3.q === 0 && !pen3.saw, JSON.stringify(pen3));
+  ok('E9 full-time ceremony stays up 15–20 s, kickoff shows the match counter', pen3.ftVisible >= 15 && pen3.ftVisible <= 20.5 && /MAÇ \d|MATCH \d/.test(pen3.kick), JSON.stringify(pen3));
 
   // Series + ceremony (from the stoppage test above)
   const ser = await p.evaluate(() => ({ series: __state.series, matchNo: __state.matchNo, ftHidden: document.getElementById('ftpanel').style.display === 'none' }));
   ok('Series score kept across matches, ceremony panel closes for next match', ser.matchNo >= 2 && (ser.series.home + ser.series.away + ser.series.draw) >= 1 && ser.ftHidden, JSON.stringify(ser));
-  const cer = await p.evaluate(() => { S(8); __state.penQ.length = 0; __state.minute = 89.99; S(1); const P = document.getElementById('ftpanel'); return { shown: P.style.display === 'block', text: P.innerText.replace(/\n+/g, ' | ').slice(0, 220) }; });
+  const cer = await p.evaluate(() => { S(4); __state.penQ.length = 0; __state.minute = 89.99; S(1); const P = document.getElementById('ftpanel'); return { shown: P.style.display === 'block', text: P.innerText.replace(/\n+/g, ' | ').slice(0, 220) }; });
   ok('Full-time ceremony shows score, winner/draw, series, fan of the match, top 3, countdown', cer.shown && /SERİ|Seri|Series/.test(cer.text), cer.text);
-  await p.evaluate(() => S(13));
+  await p.evaluate(() => S(17));
 
   // P5 referee ladder
   const ref = await p.evaluate(() => {
     const team = 'away', fans = teamFans.away.slice(10, 13); const r = {};
     const throw3 = () => fans.forEach(f => E({ type: 'chat', userId: f.id, username: f.name, comment: 'şişe' }));
     window.__neg = []; const oAdd = addChant; addChant = (t, v) => { if (v < 0) __neg.push([t, v]); return oAdd(t, v); };
-    __state.chant.away = 60; throw3(); S(1.3); r.o1 = __state.offence.away; r.c1 = __neg.filter(x => x[0] === 'away').length; r.pop1 = document.getElementById('pop-big').textContent;
-    __state.chant.away = 60; throw3(); S(1.3); r.o2 = __state.offence.away; r.c2 = Math.round(__state.chant.away); r.pop2 = document.getElementById('pop-big').textContent;
-    throw3(); S(1.3); r.o3 = __state.offence.away; r.banned = __state.banUntil.away > __state.time; r.pop3 = document.getElementById('pop-big').textContent;
+    const throw1 = (i) => E({ type: 'chat', userId: fans[i].id, username: fans[i].name, comment: 'şişe' });
+    __state.chant.away = 60; const w0 = __state.warnings.away, c0 = __watchCues.length;
+    throw1(0); r.cueAfter1 = __watchCues.length - c0; throw1(1); r.cueAfter2 = __watchCues.length - c0; r.cuePop = document.getElementById('pop-big').textContent;
+    throw1(2); S(1.3); r.pop1 = document.getElementById('pop-big').textContent; r.c1 = __neg.filter(x => x[0] === 'away').length;
+    const homeBefore = __state.chant.home; __state.chant.home = 50; throw3(); r.coolNoHurt = __state.chant.home >= 50; S(1.3);   // throws 4-6 inside the cooldown
+    r.sixThrowsWarnings = __state.warnings.away - w0; r.o1 = __state.offence.away; r.coolRisk = document.getElementById('risk').innerText;
+    S(20); __state.chant.away = 60; throw3(); S(1.3); r.o2 = __state.offence.away; r.c2 = Math.round(__state.chant.away); r.pop2 = document.getElementById('pop-big').textContent; r.chips = document.getElementById('cnt-away').textContent;
+    S(21); throw3(); S(1.3); r.o3 = __state.offence.away; r.banned = __state.banUntil.away > __state.time; r.pop3 = document.getElementById('pop-big').textContent;
     const pj = projs.length; throw3(); S(0.1); r.ignoredWhileBanned = projs.length === pj;
     S(31); r.banOver = __state.banUntil.away < __state.time;
     r.ruleText = document.getElementById('rule').textContent; r.risk = document.getElementById('risk').innerText;
     return r;
   });
+  ok('E7 👀 "ref is watching" cue appears after the 2nd throw in a window (not the 1st)', ref.cueAfter1 === 0 && ref.cueAfter2 === 1 && /HAKEM|REF/.test(ref.cuePop), ref.cuePop);
+  ok('E7 6 rapid throws → exactly one warning; cooldown throws neither count nor hurt the rivals', ref.sixThrowsWarnings === 1 && ref.o1 === 1 && ref.coolNoHurt && /⏳/.test(ref.coolRisk), JSON.stringify({ warnings: ref.sixThrowsWarnings, risk: ref.coolRisk.replace(/\n/g, ' / ') }));
   ok('P5 1st offence = verbal warning only (no chant cost)', ref.o1 === 1 && ref.c1 === 0 && /SÖZLÜ|VERBAL/.test(ref.pop1), JSON.stringify({ awayChantPenalties: ref.c1, pop: ref.pop1 }));
+  ok('C12 warnings visible as chips under the team (💬🟨)', /🟨/.test(ref.chips), ref.chips);
   ok('P5 2nd offence = yellow card −15', ref.o2 === 2 && ref.c2 <= 47 && /SARI|YELLOW/.test(ref.pop2), 'chant 60→' + ref.c2);
   ok('P5 3rd offence = 30 s throw ban, throws ignored, no extra chant penalty, ban expires', ref.banned && ref.ignoredWhileBanned && ref.banOver && /YASA|BAN/.test(ref.pop3));
   ok('P5 rule explained on screen (legend + live risk meter)', /3/.test(ref.ruleText) && /0\/3|1\/3|2\/3/.test(ref.risk), ref.ruleText + ' | ' + ref.risk.replace(/\n/g, ' / '));
 
   // Rankings: big gift can't overwhelm steady chanting
   const rk = await p.evaluate(() => {
-    const g = teamFans.home[14], c = teamFans.home[15]; g.mPts = c.mPts = 0; g.mGiftD = g.mGiftPts = 0;
+    __state.minute = 0; const g = teamFans.home[14], c = teamFans.home[15]; g.mPts = c.mPts = 0; g.mGiftD = g.mGiftPts = 0;
     E({ type: 'gift', userId: g.id, username: g.name, giftName: 'Lion', diamondCount: 1500 });
     E({ type: 'gift', userId: g.id, username: g.name, giftName: 'Universe', diamondCount: 30000 });
-    for (let i = 0; i < 70; i++) { E({ type: 'chat', userId: c.id, username: c.name, comment: 'Haydi Kartal ' + i }); S(2.05); if (__state.phase === 'ft') S(13); }
-    return { gift: Math.round(g.mPts), chat: Math.round(c.mPts), nightGift: Math.round(g.nPts) };
+    for (let i = 0; i < 70; i++) { E({ type: 'chat', userId: c.id, username: c.name, comment: 'Haydi Kartal ' + i }); S(2.05); if (__state.phase === 'ft') { __state.minute = 1; __state.phase = 'play'; } }
+    return { gift: Math.round(g.mPts), chat: Math.round(c.mPts), nightGift: Math.round(g.nPts), gname: g.name };
   });
   ok('Rankings: 31,500 diamonds of gifts capped (≤60 pts/match), a steady chanter can match it', rk.gift <= 61 && rk.chat >= rk.gift, JSON.stringify(rk));
   const boards = await p.evaluate(() => { const seen = new Set(); for (let i = 0; i < 30 * 13; i++) { S(1 / 30); seen.add(document.getElementById('board-t').textContent); } return [...seen]; });
   ok('Separate per-match and all-night boards (rotating)', boards.length >= 2, boards.join(' / '));
+  const e8 = await p.evaluate((gname) => { __state.penQ.length = 0; __state.minute = 90; __state.phase = 'play'; S(0.2); S(17);   // full time -> next kickoff
+    const nf = teamFans.away[12]; for (let i = 0; i < 6; i++) { E({ type: 'chat', userId: nf.id, username: nf.name, comment: 'Vur ' + i }); S(2.1); }
+    const rowsAt = (night) => { for (let i = 0; i < 30 * 12; i++) { S(1 / 30); if (/BU MAÇ|THIS MATCH/.test(document.getElementById('board-t').textContent) !== night) return document.getElementById('board-rows').innerText; } return ''; };
+    const match = rowsAt(false), night = rowsAt(true); const top = [...__nightBook.values()].sort((a, b) => b.pts - a.pts)[0]; const gEntry = [...__nightBook.values()].find(r => r.name === gname);
+    return { match, night, gname, newName: nf.name, top: top.name, gPts: gEntry ? Math.round(gEntry.pts) : 0 }; }, rk.gname);
+  ok('E8 per-match board resets at kickoff, all-night board keeps the night\'s top gifter', e8.match.includes(e8.newName) && !e8.match.includes(e8.gname) && e8.night.includes(e8.top) && e8.top !== e8.newName && e8.gPts >= 60, JSON.stringify({ match: e8.match.replace(/\n/g, ' / '), night: e8.night.replace(/\n/g, ' / ') }));
 
   // Batching: joins, gifts, drums
   const bt = await p.evaluate(() => {
     const L = document.getElementById('log'); const before = [...L.children].map(x => x.textContent);
     for (let i = 0; i < 12; i++) E({ type: 'chat', userId: 'batch' + i, username: 'batch' + i, comment: i % 2 ? '1' : '2' });
-    S(1.6); const after = [...L.children].map(x => x.textContent); const newLines = after.filter(x => !before.includes(x));
+    S(1.6); const after = [...L.children].map(x => x.textContent); const newLines = after.filter(x => !before.includes(x) && !x.startsWith('✅'));   // one-time join-rule lines (E5) are not join spam
     const f = teamFans.home[2]; const bq = bursts.length; let drumsFired = 0; const dl = drumLast.home;
     for (let i = 0; i < 25; i++) { E({ type: 'gift', userId: f.id, username: f.name, giftName: 'Rose', diamondCount: 1, repeatCount: 1 }); S(0.1); if (drumLast.home !== dl) {} }
     const ticker = document.getElementById('gifts').innerText; S(3);
@@ -129,11 +170,16 @@ async function page(b, q, opts = {}) {
     const rs = [...document.querySelectorAll('.lab')].filter(e => e.style.display !== 'none').map(e => e.getBoundingClientRect());
     let ov = 0; for (let i = 0; i < rs.length; i++) for (let j = i + 1; j < rs.length; j++) { const a = rs[i], c = rs[j]; const ix = Math.min(a.right, c.right) - Math.max(a.left, c.left), iy = Math.min(a.bottom, c.bottom) - Math.max(a.top, c.top); if (ix > 4 && iy > 4) ov++; }
     return { n: rs.length, ov }; });
-  ok('Name labels capped and non-overlapping', lab.n <= 18 && lab.ov === 0, JSON.stringify(lab));
+  ok('D1 name labels capped at 10 and non-overlapping', lab.n <= 10 && lab.ov === 0, JSON.stringify(lab));
 
   // Chance shown + explained on goals
   const ch = await p.evaluate(() => { __state.chant.home = 80; S(0.3); return document.getElementById('lbl-home').innerText; });
   ok('Goal chance from chant shown on the meter', /⚽/.test(ch), ch);
+  const c10 = await p.evaluate(() => { const run = (lv) => { shotCooldown = 0; const s0 = __state.shots; let flights = 0;
+      for (let i = 0; i < 30 * 60; i++) { __state.chant.home = __state.chant.away = lv; __state.penQ.length = 0; __state.minute = 30; if (__state.phase !== 'play' && !ballFly) { __state.phase = 'play'; } S(1 / 30); }
+      return __state.shots - s0; };
+    const quiet = run(0), loud = run(85); shotCooldown = 1e9; ballFly = null; __state.phase = 'play'; return { quiet, loud }; });
+  ok('C10 a silent stadium never shoots (60 s at 0% chant = 0 shots), a loud one does', c10.quiet === 0 && c10.loud >= 3, JSON.stringify(c10));
 
   // Demo cap
   const cap = await p.evaluate(() => { setBot(true); document.getElementById('bot-rate').value = 30; for (let i = 0; i < 6; i++) S(20); setBot(false); return { botN, max: CONFIG.demo.maxJoins }; });
@@ -154,6 +200,73 @@ async function page(b, q, opts = {}) {
   ok('P2 connected bridge shows OK, and a disconnect shows a warning', l2.a === 'ok' && l2.b === 'lost', l2.txt);
   ok('No console errors on live pages', lb2.errs.length === 0, lb2.errs.join(' | '));
   await lb2.close();
+  /* ---------- E3 bounded backoff + manual retry ---------- */
+  const lb3 = await page(b, '?live=1&retryScale=0.05&bridgeSrc=http://127.0.0.1:9/nope.js');
+  let mid = ''; for (let i = 0; i < 40 && !/sonra tekrar|retrying/.test(mid); i++) { await sleep(100); mid = await lb3.evaluate(() => document.getElementById('livepill').textContent); }
+  await sleep(8000);
+  const e3 = await lb3.evaluate(() => { const a = window.__liveAttempts; const gaps = window.__liveDelays.map(Math.round); return { tries: a.length, gaps, tap: window.__liveTap, st: window.__liveStatus, txt: document.getElementById('livepill').textContent }; });
+  const growing = e3.gaps.every((g, i) => i === 0 || g > e3.gaps[i - 1]);
+  ok('E3 failed bridge retries with a growing backoff, stops after 5 tries, then offers tap-to-retry', e3.tries === 5 && growing && e3.tap && /dokun|tap/.test(e3.txt) && /sonra tekrar|retrying/.test(mid), JSON.stringify(e3) + ' | mid: ' + mid);
+  await lb3.evaluate(() => { window.__bridgeSrc = 'data:text/javascript,window.insertCoin=async()=>{};window.onTikTokLiveEvent=()=>{};'; });
+  const pill = await lb3.$('#livepill'); const pb = await pill.boundingBox(); await lb3.mouse.click(pb.x + pb.width / 2, pb.y + pb.height / 2); await sleep(1500);
+  const e3b = await lb3.evaluate(() => ({ st: window.__liveStatus, txt: document.getElementById('livepill').textContent }));
+  ok('E3 after the bridge comes back, tapping retry connects', e3b.st === 'ok', e3b.txt);
+  await lb3.close();
+  /* ---------- E2 honest sound under the real autoplay policy ---------- */
+  const s1 = await page(b, '?sound=1&demo=0', { autoplay: true }); await sleep(1500);
+  const e2a = await s1.evaluate(() => ({ st: window.__audioState, icon: document.getElementById('mute').textContent, pill: getComputedStyle(document.getElementById('soundpill')).display }));
+  await s1.mouse.click(200, 400); await sleep(800);
+  const e2b = await s1.evaluate(() => ({ st: window.__audioState, ctx: audioCtx && audioCtx.state, icon: document.getElementById('mute').textContent }));
+  ok('E2 ?sound=1 before any gesture shows 🔇 + hint; first click anywhere → 🔊 and running', e2a.st === 'suspended' && e2a.icon === '🔇' && e2a.pill !== 'none' && e2b.ctx === 'running' && e2b.icon === '🔊', JSON.stringify({ e2a, e2b }));
+  await s1.close();
+  const s2 = await page(b, '?live=1&sound=1&bridgeSrc=data:text/javascript,window.insertCoin=async()=>{};window.onTikTokLiveEvent=()=>{};', { autoplay: true }); await sleep(1500);
+  const e2c = await s2.evaluate(() => window.__audioState); await s2.keyboard.press('x'); await sleep(800);
+  const e2d = await s2.evaluate(() => ({ ctx: audioCtx && audioCtx.state, icon: document.getElementById('mute').textContent }));
+  ok('E2 ?live=1&sound=1: first key press resumes sound without needing M', e2c === 'suspended' && e2d.ctx === 'running' && e2d.icon === '🔊', JSON.stringify({ before: e2c, after: e2d }));
+  await s2.close();
+  /* ---------- E10 translation completeness, D5 PLAY button, D7 help ---------- */
+  const tl = await b.newPage(); await tl.setViewport({ width: 1280, height: 900 }); tl.errs = []; tl.on('pageerror', e => tl.errs.push(e.message));
+  await tl.goto(BASE, { waitUntil: 'load' }); await sleep(1200);
+  const visible = () => tl.evaluate(() => { const skip = new Set([...document.querySelectorAll('.lab, #log, #board-rows, #help')]); let out = [];
+    const walk = (el) => { if (skip.has(el)) return; const cs = getComputedStyle(el); if (cs.display === 'none' || cs.visibility === 'hidden' || +cs.opacity === 0) return;
+      for (const n of el.childNodes) { if (n.nodeType === 3 && n.textContent.trim()) out.push(n.textContent.trim()); else if (n.nodeType === 1) walk(n); }
+      if (el.tagName === 'INPUT' && el.type !== 'checkbox' && el.type !== 'range') {} };
+    walk(document.body); return out.join(' | ').replace(/@\S+/g, ''); });
+  const PROPER = /KARTALLAR|İNÖNÜ|İnönü|TikTok|Playroom/g;
+  const TRW = /[çğışÇĞŞİı]|\b(yaz|tribün|gizle|açık|sıfırla|izleyici|kullanıcı|yorum|gönder|hediye|durdur|devam|oyna|sesi|maç|seri|taraftar|uyarı|hakem|siyah|beyaz|kırmızı|sarı|yardım|dil|ses)\b/i;
+  const ENW = /\b(the|type|Sound|Send|Like|Gifts|Username|Comment|Reset|viewer|PLAY|HOME|AWAY|Pause|Restart|help|language|fans|series|warning|black|white|yellow|red|turn|on)\b/;
+  const playIsButton = await tl.evaluate(() => ({ tag: document.getElementById('playbtn').tagName, focused: document.activeElement && document.activeElement.id }));
+  const trStart = await visible();
+  await tl.keyboard.press('l'); await sleep(400); const enStart = await visible();
+  await tl.keyboard.press('Enter'); await sleep(7000);
+  const started = await tl.evaluate(() => ({ phase: __state.phase, startHidden: !document.getElementById('start').classList.contains('on') }));
+  const enPlay = await visible();
+  await tl.keyboard.press('l'); await sleep(600); const trPlay = await visible();
+  const enBad = (enStart + ' | ' + enPlay).replace(PROPER, '').split(' | ').filter(s => TRW.test(s));
+  const trBad = (trStart + ' | ' + trPlay).replace(PROPER, '').split(' | ').filter(s => ENW.test(s) && !/Rose|Donut|Party|Lion|API|URL|handleLiveEvent|\?[a-z]/.test(s));
+  ok('E10 English mode: no Turkish chrome anywhere (start screen, panel, HUD, legend)', enBad.length === 0, enBad.slice(0, 6).join(' ‖ ') || enStart.slice(0, 200));
+  ok('E10 Turkish mode: no English chrome left (gift names/API excepted)', trBad.length === 0, trBad.slice(0, 6).join(' ‖ ') || trStart.slice(0, 200));
+  ok('D5 PLAY is a real focused <button>; Enter starts the match', playIsButton.tag === 'BUTTON' && playIsButton.focused === 'playbtn' && started.phase !== 'intro' && started.startHidden, JSON.stringify({ playIsButton, started }));
+  /* D8 pause / restart */
+  const d8 = await tl.evaluate(async () => { document.getElementById('btn-pause').click(); const t0 = __state.time; await new Promise(r => setTimeout(r, 1200)); const frozen = __state.time === t0;
+    document.getElementById('btn-pause').click(); await new Promise(r => setTimeout(r, 800)); const resumed = __state.time > t0;
+    __state.goals.home = 2; const m = __state.matchNo; document.getElementById('btn-restart').click(); return { frozen, resumed, goals: __state.goals.home + __state.goals.away, sameNo: __state.matchNo === m, minute: Math.round(__state.minute) }; });
+  ok('D8 test panel pause freezes the match, resume continues, restart resets the score', d8.frozen && d8.resumed && d8.goals === 0 && d8.sameNo && d8.minute <= 1, JSON.stringify(d8));
+  await tl.keyboard.press('?'); await sleep(200);
+  const d7 = await tl.evaluate(() => ({ on: document.getElementById('help').classList.contains('on'), txt: document.getElementById('help').innerText }));
+  ok('D7 "?" opens a help overlay documenting keys and URL params', d7.on && ['?clip=1', '?demo=0', '?sound=1', '?seed=N', '?panel=0', '?help=1'].every(k => d7.txt.includes(k)), d7.txt.split('\n').slice(0, 4).join(' / '));
+  ok('No page errors in translation/pause/help run', tl.errs.length === 0, tl.errs.join(' | '));
+  await tl.close();
+  /* ---------- E6 soak: ?bot=1 at 8/s for 30 simulated minutes ---------- */
+  const sk = await page(b, '?clip=1&demo=0');
+  const e6 = await sk.evaluate(() => { setBot(true); document.getElementById('bot-rate').value = 8;
+    const timeIt = () => { const t0 = performance.now(); __step(20, 1 / 30); return (performance.now() - t0) / 20; };
+    __soak(600); const n10 = __users.size, t10 = timeIt(); __soak(1200); const n30 = __users.size, t30 = timeIt();
+    const names = [...__users.values()].map(f => f.name); const dup = names.length - new Set(names).size; const suffixed = names.filter(n => /_\d$/.test(n) || /_\d+_\d+$/.test(n));
+    return { n10, n30, cap: CONFIG.demo.maxJoins, t10: +t10.toFixed(1), t30: +t30.toFixed(1), dup, suffixed, matches: __state.matchNo }; });
+  ok('E6 30-min bot soak: fan count plateaus at the cap, unique names with no recycled _N suffix, no slowdown trend', e6.n10 === e6.n30 && e6.n30 <= e6.cap && e6.dup === 0 && e6.suffixed.length === 0 && e6.t30 < e6.t10 * 1.5 + 5, JSON.stringify(e6));
+  ok('No console errors during soak', sk.errs.length === 0, sk.errs.slice(0, 3).join(' | '));
+  await sk.close();
 
   /* ---------- P2 audio honesty ---------- */
   const au = await page(b, '?bot=1');
@@ -166,6 +279,7 @@ async function page(b, q, opts = {}) {
   ok('P2 tapping the button resumes audio and only then shows 🔊', a2.st === 'running' && a2.icon === '🔊' && a2.pill === 'none', JSON.stringify(a2));
   await sleep(12000);
   ok('Desktop ?bot=1 run: no console errors', au.errs.length === 0, au.errs.slice(0, 3).join(' | '));
+  ok('D10 no console warnings on a normal run (flatShading warning gone)', au.warns.length === 0, au.warns.slice(0, 3).join(' | '));
   await au.screenshot({ path: '/workspace/inonu-stadium/screenshot-desktop.png' });
   await au.close();
 
