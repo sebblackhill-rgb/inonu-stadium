@@ -52,12 +52,12 @@
  {
   "name": "Series score kept across matches, ceremony panel closes for next match",
   "pass": true,
-  "info": "{\"series\":{\"home\":0,\"away\":1,\"draw\":0},\"matchNo\":2,\"ftHidden\":true}"
+  "info": "{\"series\":{\"home\":0,\"away\":0,\"draw\":1},\"matchNo\":2,\"ftHidden\":true}"
  },
  {
   "name": "Full-time ceremony shows score, winner/draw, series, fan of the match, top 3, countdown",
   "pass": true,
-  "info": "MAÇ SONU | 1 - 0 | 🏆 KARTALLAR KAZANDI! | Seri: KARTALLAR 1 – 1 MİSAFİR | BU MAÇIN EN İYİLERİ | SONRAKİ MAÇ 12"
+  "info": "MAÇ SONU | 0 - 0 | 🤝 BERABERE! | Seri: KARTALLAR 0 – 0 MİSAFİR · 🤝 2 | BU MAÇIN EN İYİLERİ | SONRAKİ MAÇ 12"
  },
  {
   "name": "P5 1st offence = verbal warning only (no chant cost)",
@@ -106,7 +106,7 @@
  {
   "name": "Goal chance from chant shown on the meter",
   "pass": true,
-  "info": "🔥 79%\n⚽ %73"
+  "info": "🔥 79%\n⚽ %74"
  },
  {
   "name": "Demo joins capped",
@@ -151,6 +151,6 @@
  {
   "name": "Emulated iPhone 13: tap PLAY, game runs, no console errors",
   "pass": true,
-  "info": "{\"phase\":\"shot\",\"users\":44,\"v\":\"inonu-v2\",\"audio\":\"running\"} "
+  "info": "{\"phase\":\"shot\",\"users\":43,\"v\":\"inonu-v2\",\"audio\":\"running\"} "
  }
 ]
