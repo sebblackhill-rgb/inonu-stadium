@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>İnönü Tribün Savaşı — LIVE Chant Battle</title>
+<meta property="og:title" content="İnönü Tribün Savaşı — TikTok LIVE chant battle" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23111'/%3E%3Cpath d='M32 8 52 16v18c0 12-9 20-20 24C21 54 12 46 12 34V16z' fill='%23fff'/%3E%3Cpath d='M32 8v50C21 54 12 46 12 34V16z' fill='%23111' opacity='.9'/%3E%3C/svg%3E" />
+<style>
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #07090f; color: #fff; touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent; user-select: none; font-family: "Trebuchet MS", "Segoe UI", system-ui, sans-serif; }
+#app { height: 100%; width: 100%; display: flex; align-items: center; justify-content: center; gap: 16px; padding: 10px; }
+body.mobile #app, body.clip #app { padding: 0; }
+#stage-sizer { position: relative; flex: 0 0 auto; }
+#stage { width: 540px; height: 960px; position: absolute; left: 0; top: 0; transform-origin: top left; overflow: hidden;
+  background: #0d1424; border-radius: 18px; box-shadow: 0 0 0 3px #222, 0 20px 70px rgba(0,0,0,.6); }
+body.mobile #stage, body.clip #stage { border-radius: 0; box-shadow: none; }
+#c { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+#labels, #fx, #ui { position: absolute; inset: 0; pointer-events: none; }
+#labels { z-index: 3; overflow: hidden; }
+#fx { z-index: 4; }
+#ui { z-index: 5; }
+.lab { position: absolute; left: 0; top: 0; padding: 1px 5px 2px; border-radius: 6px; font-size: 9.5px; font-weight: 800; white-space: nowrap;
+  max-width: 100px; overflow: hidden; text-overflow: ellipsis; background: rgba(10,10,14,.82); color: #fff; text-shadow: 0 1px 1px #000; will-change: transform; }
+.lab.home { box-shadow: inset 0 -2px 0 #f2f2f2; }
+.lab.away { box-shadow: inset 0 -2px 0 #ffcc22; background: rgba(110,8,20,.88); }
+.lab.hot { font-size: 12px; padding: 2px 7px 3px; border: 1.5px solid #fff; z-index: 2; }
+.lab.amigo { background: linear-gradient(180deg,#fff3b0,#e3a826); color: #2a1600; text-shadow: none; font-size: 11px; border: 1px solid #fff7cf; }
+.lab .say { display: block; font-size: 9px; font-weight: 700; color: #ffe27a; max-width: 96px; overflow: hidden; text-overflow: ellipsis; }
+
+/* scoreboard */
+#score { position: absolute; top: 8px; left: 8px; right: 8px; height: 58px; border-radius: 14px; display: flex; align-items: stretch; overflow: hidden;
+  background: linear-gradient(180deg, #1b1f2b, #0b0d13); border: 2px solid #3a4152; box-shadow: 0 8px 22px rgba(0,0,0,.55); }
+#score .side { flex: 1; display: flex; align-items: center; gap: 7px; padding: 0 8px; }
+#score .side.home { background: linear-gradient(90deg, #000 0%, #2a2a2a 100%); }
+#score .side.away { background: linear-gradient(270deg, #8f0b1c 0%, #4d0510 100%); flex-direction: row-reverse; text-align: right; }
+#score .crest { width: 40px; height: 46px; flex: 0 0 auto; }
+#score .tname { font-weight: 900; font-size: 15px; letter-spacing: .5px; line-height: 1.05; }
+#score .tname small { display: block; font-size: 10px; font-weight: 700; opacity: .8; letter-spacing: 0; }
+#score .mid { width: 120px; flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #0a0c12; }
+#score .goals { font-size: 34px; font-weight: 900; line-height: 1; letter-spacing: 2px; font-variant-numeric: tabular-nums; }
+#score .clock { font-size: 12px; font-weight: 800; color: #6cff8f; margin-top: 2px; font-variant-numeric: tabular-nums; }
+#score .venue { position: absolute; left: 50%; top: 64px; transform: translateX(-50%); font-size: 10px; font-weight: 800; letter-spacing: 2px;
+  color: #cfe3ff; background: rgba(0,0,0,.55); padding: 2px 10px; border-radius: 0 0 8px 8px; white-space: nowrap; }
+
+/* chant meters */
+#meters { position: absolute; top: 84px; left: 10px; right: 10px; display: flex; gap: 8px; align-items: center; }
+.meter { flex: 1; height: 26px; border-radius: 13px; background: rgba(0,0,0,.6); border: 2px solid rgba(255,255,255,.25); position: relative; overflow: hidden; }
+.meter .fill { position: absolute; top: 0; bottom: 0; width: 0%; }
+.meter.home .fill { left: 0; background: repeating-linear-gradient(90deg,#fff 0 8px,#d9d9d9 8px 10px,#111 10px 18px,#333 18px 20px); }
+.meter.away .fill { right: 0; background: linear-gradient(90deg,#ffcf2a,#e01b2f); }
+.meter .lbl { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 900; text-shadow: 0 0 3px #000, 0 0 6px #000; }
+#mom { width: 64px; flex: 0 0 auto; text-align: center; font-size: 9px; font-weight: 900; color: #ffd75e; line-height: 1.1; }
+#mom .bar { margin-top: 3px; height: 8px; border-radius: 4px; background: linear-gradient(90deg,#fff,#555 50%,#e01b2f); position: relative; }
+#mom .knob { position: absolute; top: -4px; width: 16px; height: 16px; margin-left: -8px; left: 50%; border-radius: 50%; background: #ffd75e; border: 2px solid #000; box-shadow: 0 0 8px #ffd75e; }
+
+/* side panels */
+#log { position: absolute; left: 8px; top: 118px; width: 210px; display: flex; flex-direction: column; gap: 3px; }
+#log div { font-size: 10.5px; font-weight: 800; background: rgba(0,0,0,.58); padding: 3px 7px; border-radius: 8px; border-left: 3px solid #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#log div.away { border-left-color: #ffcc22; }
+#board { position: absolute; right: 8px; top: 118px; width: 150px; background: rgba(0,0,0,.6); border-radius: 10px; padding: 5px 7px; border: 1px solid rgba(255,215,94,.5); }
+#board h4 { margin: 0 0 3px; font-size: 10px; color: #ffd75e; letter-spacing: 1px; text-align: center; }
+#board .row { display: flex; justify-content: space-between; font-size: 10px; font-weight: 800; padding: 1px 0; gap: 5px; }
+#board .row span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#board .row.away span:first-child { color: #ffcf55; }
+
+/* how to join legend */
+#legend { position: absolute; left: 8px; right: 8px; bottom: 8px; border-radius: 12px; padding: 5px 6px 5px;
+  background: linear-gradient(180deg, rgba(14,18,30,.93), rgba(5,7,12,.95)); border: 2px solid #ffd75e; box-shadow: 0 8px 24px rgba(0,0,0,.5); }
+#legend .join { display: flex; gap: 5px; margin-bottom: 4px; }
+#legend .join div { flex: 1; text-align: center; font-weight: 900; font-size: 13px; padding: 2px 4px 3px; border-radius: 9px; line-height: 1.05; }
+#legend .join div small { display: block; font-size: 9px; font-weight: 700; opacity: .85; }
+#legend .join .h { background: repeating-linear-gradient(90deg,#111 0 14px,#2b2b2b 14px 28px); border: 2px solid #fff; }
+#legend .join .a { background: linear-gradient(90deg,#a70d20,#d22a1e); border: 2px solid #ffcc22; }
+#legend .join b { font-size: 19px; color: #ffd75e; text-shadow: 0 2px 0 #000; }
+#legend .acts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+#legend .acts div { text-align: center; background: rgba(255,255,255,.07); border-radius: 7px; padding: 2px 2px; font-size: 9.5px; font-weight: 800; line-height: 1.1; }
+#legend .acts div i { font-style: normal; font-size: 12px; margin-right: 2px; }
+#legend .acts div em { display: block; font-style: normal; color: #ffd75e; font-size: 9.5px; }
+
+/* popups */
+#pop { position: absolute; left: 0; right: 0; top: 330px; text-align: center; opacity: 0; }
+#pop .big { font-size: 74px; font-weight: 900; letter-spacing: 2px; line-height: 1; color: #fff;
+  -webkit-text-stroke: 3px #000; text-shadow: 0 6px 0 #000, 0 0 30px rgba(255,220,80,.9); font-style: italic; }
+#pop .sub { margin-top: 8px; display: inline-block; font-size: 18px; font-weight: 900; padding: 5px 14px; border-radius: 12px; background: rgba(0,0,0,.72); border: 2px solid #ffd75e; }
+#pop.away .big { color: #ffd23a; }
+#pop.warn .big { color: #ffe23a; font-size: 50px; }
+#pop.small .big { font-size: 44px; }
+#toast { position: absolute; left: 50%; top: 250px; transform: translateX(-50%); white-space: nowrap; font-size: 14px; font-weight: 900; padding: 6px 14px;
+  border-radius: 20px; background: rgba(0,0,0,.75); border: 2px solid #fff; opacity: 0; }
+#celebrate { position: absolute; left: 12px; right: 12px; top: 470px; text-align: center; opacity: 0; }
+#celebrate div { display: inline-block; font-size: 15px; font-weight: 900; padding: 6px 12px; border-radius: 12px; margin: 3px; background: rgba(0,0,0,.78); border: 2px solid #fff; }
+#celebrate div.a { border-color: #ffcc22; }
+#card { position: absolute; right: 20px; top: 210px; width: 46px; height: 62px; border-radius: 6px; background: #ffd400; border: 2px solid #000; opacity: 0; box-shadow: 0 6px 18px rgba(0,0,0,.6); }
+
+/* start + buttons */
+#start { position: absolute; inset: 0; z-index: 9; display: none; align-items: center; justify-content: center; flex-direction: column; gap: 14px; cursor: pointer;
+  background: radial-gradient(circle at 50% 45%, rgba(0,0,0,.25), rgba(0,0,0,.8)); pointer-events: auto; }
+#start.on { display: flex; }
+#start .t { font-size: 46px; font-weight: 900; text-align: center; line-height: 1; -webkit-text-stroke: 2px #000; text-shadow: 0 5px 0 #000; }
+#start .t small { display: block; font-size: 18px; -webkit-text-stroke: 0; color: #ffd75e; margin-top: 8px; }
+#start .b { font-size: 22px; font-weight: 900; padding: 14px 30px; border-radius: 40px; background: linear-gradient(180deg,#fff,#cfcfcf); color: #000; box-shadow: 0 6px 0 #555, 0 0 30px rgba(255,255,255,.6); }
+.ibtn { position: absolute; z-index: 8; width: 34px; height: 34px; border-radius: 50%; border: 2px solid rgba(255,255,255,.5); background: rgba(0,0,0,.6); color: #fff;
+  font-size: 16px; display: flex; align-items: center; justify-content: center; cursor: pointer; pointer-events: auto; }
+#mute { right: 166px; top: 118px; display: none; }
+#panel-btn { right: 166px; top: 156px; display: none; }
+body.panel-hidden #panel-btn, body.mobile #panel-btn { display: flex; }
+body.clip .ibtn { display: none !important; }
+
+/* test panel */
+#test-panel { width: 290px; flex: 0 0 auto; background: #141925; border: 1px solid #2c3446; border-radius: 14px; padding: 12px; font-size: 13px; align-self: center; }
+#test-panel h3 { margin: 0 0 8px; font-size: 13px; letter-spacing: 1px; color: #ffd75e; }
+#test-panel label { display: block; font-size: 11px; opacity: .75; margin: 7px 0 3px; }
+#test-panel input[type=text] { width: 100%; padding: 7px 8px; border-radius: 8px; border: 1px solid #3a4560; background: #0b0f18; color: #fff; font-size: 13px; }
+#test-panel button { padding: 7px 9px; border-radius: 8px; border: 1px solid #45506b; background: #222a3c; color: #fff; font-weight: 700; cursor: pointer; margin: 3px 2px 0 0; font-size: 12px; }
+#test-panel button:hover { background: #2e3850; }
+#test-panel .chips button { font-size: 11px; padding: 5px 7px; }
+#test-panel .hint { font-size: 11px; opacity: .6; margin-top: 10px; line-height: 1.4; }
+body.panel-hidden #test-panel { display: none; }
+body.mobile #test-panel { position: fixed; right: 8px; bottom: 8px; z-index: 20; max-height: 70vh; overflow: auto; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="stage-sizer"><div id="stage">
+    <canvas id="c"></canvas>
+    <div id="labels"></div>
+    <canvas id="fx" width="540" height="960"></canvas>
+    <div id="ui">
+      <div id="score">
+        <div class="side home"><canvas class="crest" id="crest-home" width="80" height="92"></canvas><div class="tname" id="name-home">KARTALLAR<small id="cnt-home">0 taraftar</small></div></div>
+        <div class="mid"><div class="goals" id="goals">0 - 0</div><div class="clock" id="clock">0'</div></div>
+        <div class="side away"><canvas class="crest" id="crest-away" width="80" height="92"></canvas><div class="tname" id="name-away">MİSAFİR<small id="cnt-away">0 taraftar</small></div></div>
+        <div class="venue" id="venue">İNÖNÜ STADI · İSTANBUL</div>
+      </div>
+      <div id="meters">
+        <div class="meter home"><div class="fill" id="fill-home"></div><div class="lbl" id="lbl-home">📣 0%</div></div>
+        <div id="mom"><span id="mom-t">MOMENTUM</span><div class="bar"><div class="knob" id="knob"></div></div></div>
+        <div class="meter away"><div class="fill" id="fill-away"></div><div class="lbl" id="lbl-away">📣 0%</div></div>
+      </div>
+      <div id="log"></div>
+      <div id="board"><h4 id="board-t">🎤 TRİBÜN LİDERLERİ</h4><div id="board-rows"></div></div>
+      <div id="toast"></div>
+      <div id="card"></div>
+      <div id="pop"><div class="big" id="pop-big"></div><div class="sub" id="pop-sub"></div></div>
+      <div id="celebrate"></div>
+      <div id="legend">
+        <div class="join">
+          <div class="h"><b>1</b> <span id="lg-home">yaz → EV SAHİBİ</span><small id="lg-home2">Type 1 = HOME ⚫⚪</small></div>
+          <div class="a"><b>2</b> <span id="lg-away">yaz → DEPLASMAN</span><small id="lg-away2">Type 2 = AWAY 🔴🟡</small></div>
+        </div>
+        <div class="acts" id="acts"></div>
+      </div>
+    </div>
+    <button class="ibtn" id="mute" title="Sound (M)">🔇</button>
+    <button class="ibtn" id="panel-btn" title="Test panel (H)">⚙️</button>
+    <div id="start"><div class="t">İNÖNÜ<br>TRİBÜN SAVAŞI<small>Stadium chant battle · TikTok LIVE</small></div><div class="b">▶ OYNA / PLAY</div><div style="font-size:12px;opacity:.8">sesi aç 🔊 · sound on</div></div>
+  </div></div>
+  <div id="test-panel">
+    <h3>TEST PANEL <span style="opacity:.5">(H gizle)</span></h3>
+    <label>Kullanıcı / username</label><input type="text" id="fake-user" value="pablo" />
+    <label>Yorum / comment</label><input type="text" id="fake-comment" value="1" />
+    <div><button id="btn-send">Gönder 💬</button><button id="btn-like">Like ❤️</button></div>
+    <div class="chips" id="chips"></div>
+    <label>Hediye / gifts</label>
+    <div><button id="btn-rose">🌹 Rose (1)</button><button id="btn-med">🍩 Donut (30)</button><button id="btn-big">🎉 Party (300)</button><button id="btn-lion">🦁 Lion (1500)</button></div>
+    <label>Bot kalabalık / demo crowd</label>
+    <div><label style="display:inline;opacity:1"><input type="checkbox" id="bot-toggle" /> açık</label> <input type="range" id="bot-rate" min="1" max="30" value="8" style="width:120px;vertical-align:middle" /> <span id="bot-rate-val">8/s</span></div>
+    <div class="hint">M ses · L dil TR/EN · H panel<br>URL: ?bot=1 demo · ?live=1 TikTok (Playroom) · ?lang=en<br>API: window.handleLiveEvent({type:'chat'|'like'|'gift', userId, username, comment, giftName, diamondCount, repeatCount})</div>
+  </div>
+</div>
