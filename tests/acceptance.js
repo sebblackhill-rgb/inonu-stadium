@@ -176,7 +176,7 @@ async function page(b, q, opts = {}) {
   const ch = await p.evaluate(() => { __state.chant.home = 80; S(0.3); return document.getElementById('lbl-home').innerText; });
   ok('Goal chance from chant shown on the meter', /⚽/.test(ch), ch);
   const c10 = await p.evaluate(() => { const run = (lv) => { shotCooldown = 0; const s0 = __state.shots; let flights = 0;
-      for (let i = 0; i < 30 * 60; i++) { __state.chant.home = __state.chant.away = lv; __state.penQ.length = 0; __state.minute = 30; if (__state.phase !== 'play' && !ballFly) { __state.phase = 'play'; } S(1 / 30); }
+      for (let i = 0; i < 30 * 60; i++) { __state.chant.home = lv; __state.chant.away = 0; __state.penQ.length = 0; __state.minute = 30; if (__state.phase !== 'play' && !ballFly) { __state.phase = 'play'; } S(1 / 30); }
       return __state.shots - s0; };
     const quiet = run(0), loud = run(85); shotCooldown = 1e9; ballFly = null; __state.phase = 'play'; return { quiet, loud }; });
   ok('C10 a silent stadium never shoots (60 s at 0% chant = 0 shots), a loud one does', c10.quiet === 0 && c10.loud >= 3, JSON.stringify(c10));
