@@ -2650,7 +2650,14 @@ function seedCrowd(n) {
    -> live (green, last event Ns ago; amber when quiet > 90 s) or down (bounded retries 10 s / 30 s / 60 s, then host Retry).
    Bots are never substituted in live mode. */
 const RETRY_S = [10, 30, 60];
-let pr = { subscribed: false, loading: null, retryTimer: null };
+let pr = { subscribed: false, loading: null, retryTimer: null, generation: 0, unsubscribe: null, inFlight: false };
+function clearPlayroomListener() {
+  if (typeof pr.unsubscribe === "function") {
+    try { pr.unsubscribe(); } catch (e) { console.warn("[live] unsubscribe failed", e); }
+  }
+  pr.unsubscribe = null;
+  pr.subscribed = false;
+}
 function setConn(st, why) {
   state.conn.st = st;
   if (why) diag({ outcome: "info", src: "live", type: "connection", reason: st + ": " + why });
@@ -2687,24 +2694,48 @@ function mapLiveEvent(event) {
   };
 }
 async function tryConnectPlayroom(isRetry) {
-  if (state.mode !== "live" || pr.subscribed) return;
+  if (state.mode !== "live") return;
+  // A forced retry retires old handlers; ordinary automatic calls do not
+  // register duplicates while a connection is already listening.
+  if (!isRetry && (pr.subscribed || pr.inFlight)) return;
+  const generation = ++pr.generation;
+  clearTimeout(pr.retryTimer);
+  clearPlayroomListener();
+  pr.inFlight = true;
   setConn("connecting", isRetry ? "retry " + state.conn.tries : "start");
   try {
     await loadPlayroom();
+    if (generation !== pr.generation) return;
     const mod = window.Playroom || window.PlayroomKit || window;
-    const insertCoin = mod.insertCoin || window.insertCoin, onTikTokLiveEvent = mod.onTikTokLiveEvent || window.onTikTokLiveEvent;
-    if (typeof insertCoin !== "function" || typeof onTikTokLiveEvent !== "function") throw new Error("insertCoin / onTikTokLiveEvent not found");
+    const insertCoin = mod.insertCoin || window.insertCoin;
+    const onTikTokLiveEvent = mod.onTikTokLiveEvent || window.onTikTokLiveEvent;
+    if (typeof insertCoin !== "function" || typeof onTikTokLiveEvent !== "function")
+      throw new Error("insertCoin / onTikTokLiveEvent not found");
     await insertCoin({ liveMode: "tiktok" });
-    onTikTokLiveEvent((event) => { try { const mapped = mapLiveEvent(event); if (mapped) handleLiveEvent(mapped); } catch (e) { console.warn("[live] bad event", e); } });
-    if (isRetry) LEDGER.reconnects++; // the event-id memory is kept, so replayed events after a reconnect are dropped
+    if (generation !== pr.generation) return;
+    const off = onTikTokLiveEvent((event) => {
+      if (generation !== pr.generation || state.mode !== "live") return;
+      try { const mapped = mapLiveEvent(event); if (mapped) handleLiveEvent(mapped); }
+      catch (e) { console.warn("[live] bad event", e); }
+    });
+    pr.unsubscribe = typeof off === "function" ? off : null;
+    if (isRetry) LEDGER.reconnects++;
     pr.subscribed = true; state.conn.tries = 0; state.conn.retryAt = 0;
     setConn(state.conn.lastEvent ? "live" : "listening", "subscribed to TikTok LIVE events");
   } catch (err) {
+    if (generation !== pr.generation) return; // ignore superseded connection errors
+    clearPlayroomListener();
     setConn("down", err && err.message ? err.message : String(err));
     scheduleRetry();
+  } finally {
+    if (generation === pr.generation) pr.inFlight = false;
   }
 }
-function retryLive() { if (state.mode !== "live") return; state.conn.tries = 0; clearTimeout(pr.retryTimer); tryConnectPlayroom(true); }
+function retryLive() {
+  if (state.mode !== "live") return;
+  state.conn.tries = 0;
+  tryConnectPlayroom(true);
+}
 
 /* ---------- camera, layout, loop, boot ---------- */
 function fit() {
