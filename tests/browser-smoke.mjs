@@ -41,7 +41,16 @@ try {
      const publicBoardExcludesTest=!document.getElementById('board').textContent.includes('QA Gift');
      s.mode=mode;s.conn.st='off';renderWaiting();renderBoard();
      const gaps=window.__conservation();
-     return {joined:fan?.team==='sun',held,claimed,
+     refreshUI();
+     const mission=document.getElementById('mission');
+     const rect=(id)=>document.getElementById(id).getBoundingClientRect();
+     const meters=rect('meters'),objective=rect('mission'),left=rect('leftcol'),board=rect('board'),stage=rect('stage');
+     const missionVisible=mission?.textContent?.includes('NEXT MILESTONE') &&
+       getComputedStyle(mission).display!=='none';
+     const objectiveLayout=objective.top>=meters.bottom-1 &&
+       objective.bottom<=left.top+1 && objective.bottom<=board.top+1 &&
+       objective.left>=stage.left && objective.right<=stage.right;
+     return {joined:fan?.team==='sun',held,claimed,missionVisible,objectiveLayout,
        rejected:bad?.outcome==='rejected',invalidExcluded,
        noHostCredit,liveTestRejected:testLive?.outcome==='rejected',
        outageCorrect,publicBoardExcludesTest,
@@ -53,7 +62,7 @@ try {
    });
    await page.screenshot({path:'browser-evidence/pyramid-'+name+'.png',fullPage:true});
    console.log(name,JSON.stringify({report,errors}));
-   if(!report.joined||!report.held||!report.claimed||!report.rejected||
+   if(!report.joined||!report.held||!report.claimed||!report.missionVisible||!report.objectiveLayout||!report.rejected||
       !report.invalidExcluded||!report.noHostCredit||!report.liveTestRejected||
       !report.outageCorrect||!report.publicBoardExcludesTest||
       !report.finite||report.gapSun!==0||report.gapNile!==0||
