@@ -940,6 +940,9 @@ function nag(u, what) {
 function handleLiveEvent(evt) {
   if (!evt || typeof evt !== "object") return diag({ outcome: "rejected", reason: "bad event" });
   const src = ["live", "test", "demo"].includes(evt.source) ? evt.source : (state.mode === "live" ? "live" : "test");
+  const hostAllowed = new URLSearchParams(location.search).get("host") === "1";
+  if (state.mode === "live" && src !== "live" && !hostAllowed)
+    return diag({ outcome: "rejected", src, type: evt.type, reason: "host tests disabled in LIVE; use explicit host mode on a private preview" });
   const userId = String(evt.userId || evt.uniqueId || evt.username || "").trim().slice(0, 80);
   const username = (String(evt.username || evt.nickname || evt.userId || "worker").trim() || "worker").slice(0, 40);
   const type = String(evt.type || "chat").toLowerCase();
@@ -948,6 +951,23 @@ function handleLiveEvent(evt) {
   if (src === "live") { state.conn.lastEvent = performance.now(); if (state.conn.st !== "live") state.conn.st = "live"; }
   if (!userId) return diag(Object.assign(base, { outcome: "rejected", reason: "no user id" }));
   if (type !== "chat" && type !== "like" && type !== "gift") return diag(Object.assign(base, { outcome: "rejected", reason: "unknown type " + type }));
+  // Validate source payload BEFORE ledger deduplication or gameplay changes.
+  const validPositive = (v,max) => {
+    const n = typeof v === "number" ? v : typeof v === "string" && v.trim() ? Number(v) : NaN;
+    return Number.isSafeInteger(n) && n >= 1 && n <= max ? n : null;
+  };
+  if (type === "like") {
+    const x = evt.likeCount ?? evt.repeatCount ?? 1, n = validPositive(x,100000);
+    if (n === null) return diag(Object.assign(base,{outcome:"rejected",reason:"invalid like count"}));
+    evt = Object.assign({},evt,{likeCount:n});
+  }
+  if (type === "gift") {
+    const units = validPositive(evt.diamondCount ?? evt.giftValue,1000000);
+    const repeats = validPositive(evt.repeatCount ?? 1,100000);
+    if (units === null || repeats === null)
+      return diag(Object.assign(base,{outcome:"rejected",reason:"invalid gift units or repeats"}));
+    evt = Object.assign({},evt,{diamondCount:units,giftValue:units,repeatCount:repeats});
+  }
   LEDGER.bySrc[src]++;
   if (eid != null && eid !== "") {
     // bounded LRU of event ids; it lives for the whole page session, so it survives connector reconnects / replays
@@ -983,7 +1003,7 @@ function handleLiveEvent(evt) {
     return r;
   }
   if (type === "like") {
-    const n = Math.max(1, Math.min(15, Number(evt.likeCount || evt.repeatCount) || 1));
+    const n = Math.min(15, evt.likeCount);
     if (!u || !u.team) {
       u = getOrMakeUser(userId, username, evt.photoUrl, src);
       if (!u) return diag(Object.assign(base, { outcome: "rejected", reason: "participant ledger full" }));
@@ -2606,22 +2626,26 @@ function scheduleRetry() {
 function loadPlayroom() {
   if (pr.loading) return pr.loading;
   pr.loading = new Promise((resolve, reject) => {
-    const s = document.createElement("script"); s.src = "https://unpkg.com/playroomkit/multiplayer.js";
+    const s = document.createElement("script"); s.src = "https://cdn.joinplayroom.com/playroomkit/multiplayer.full.umd.js";
     s.onload = resolve; s.onerror = () => { pr.loading = null; s.remove(); reject(new Error("could not load the Playroom Kit script")); }; document.head.appendChild(s);
   });
   return pr.loading;
 }
 function mapLiveEvent(event) {
   const d = (event && event.data) || event || {};
-  const raw = String((event && event.type) || d.type || "chat").toLowerCase();
-  const type = raw.includes("gift") ? "gift" : raw.includes("like") ? "like" : "chat";
+  const raw = String((event && event.type) || d.type || "").toLowerCase();
+  if (!["chat","like","gift"].includes(raw)) return null; // a follow/share is NOT a free heave
+  if (!d.userId) return null; // never combine paid credit under anonymous name-only identity
+  const value = d.giftDiamondCount ?? d.diamondCount ?? d.diamond_count ?? d.giftValue;
   return {
-    source: "live", type, eventId: d.msgId || d.eventId || d.id || (event && (event.msgId || event.id)),
-    userId: d.userId || d.uniqueId || d.unique_id || d.username, username: d.username || d.nickName || d.nickname || d.uniqueId || "viewer",
+    source: "live", type: raw, eventId: d.msgId ?? d.eventId ?? d.id ?? (event && (event.msgId ?? event.id)),
+    userId: String(d.userId), username: d.name || d.username || d.nickName || d.nickname || d.uniqueId || "viewer",
     comment: d.comment || d.content || "", giftName: d.giftName || d.gift_name || d.gift || "",
-    giftValue: d.giftValue || d.diamondCount || d.diamond_count || 1, diamondCount: d.diamondCount || d.diamond_count || d.giftValue,
-    repeatCount: d.repeatCount || d.repeat_count || 1, repeatEnd: d.repeatEnd != null ? d.repeatEnd : d.repeat_end, groupId: d.groupId || d.group_id,
-    likeCount: d.likeCount || d.like_count, photoUrl: d.userPhotoUrl || d.profilePictureUrl || d.photoUrl
+    giftValue: value, diamondCount: value,
+    repeatCount: d.repeatCount ?? d.repeat_count ?? 1,
+    repeatEnd: d.repeatEnd ?? d.repeat_end, groupId: d.streakId || d.comboId || d.groupId || d.group_id,
+    likeCount: d.likeCount ?? d.like_count ?? 1,
+    photoUrl: d.userPhotoUrl || d.profilePictureUrl || d.photoUrl
   };
 }
 async function tryConnectPlayroom(isRetry) {
@@ -2633,7 +2657,7 @@ async function tryConnectPlayroom(isRetry) {
     const insertCoin = mod.insertCoin || window.insertCoin, onTikTokLiveEvent = mod.onTikTokLiveEvent || window.onTikTokLiveEvent;
     if (typeof insertCoin !== "function" || typeof onTikTokLiveEvent !== "function") throw new Error("insertCoin / onTikTokLiveEvent not found");
     await insertCoin({ liveMode: "tiktok" });
-    onTikTokLiveEvent((event) => { try { handleLiveEvent(mapLiveEvent(event)); } catch (e) { console.warn("[live] bad event", e); } });
+    onTikTokLiveEvent((event) => { try { const mapped = mapLiveEvent(event); if (mapped) handleLiveEvent(mapped); } catch (e) { console.warn("[live] bad event", e); } });
     if (isRetry) LEDGER.reconnects++; // the event-id memory is kept, so replayed events after a reconnect are dropped
     pr.subscribed = true; state.conn.tries = 0; state.conn.retryAt = 0;
     setConn(state.conn.lastEvent ? "live" : "listening", "subscribed to TikTok LIVE events");
@@ -2777,7 +2801,7 @@ function boot() {
   if (state.mode === "live") { document.body.classList.add("panel-hidden"); if (q.get("host") !== "1") document.body.classList.add("viewer-capture"); $("bot-toggle").disabled = true; fit(); }
   if (q.get("calm") === "1") setCalm(true);
   const safe = Number(q.get("safe")); if (isFinite(safe) && safe > 0) $("stage").style.setProperty("--safe-b", Math.min(400, safe) + "px"); // reserve space for platform overlays
-  if (q.get("bot") === "1") { $("bot-toggle").checked = true; startBot(); }
+  if (q.get("bot") === "1" && state.mode !== "live") { $("bot-toggle").checked = true; startBot(); }
   if (q.get("sound") === "1") setMuted(false);
   if (q.get("lang") === "tr") { CONFIG.lang = "tr"; applyPhaseUI(); }
   if (q.get("panel") === "0") { document.body.classList.add("panel-hidden"); fit(); }
