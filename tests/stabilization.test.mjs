@@ -78,3 +78,37 @@ test('closed build phase ignores duplicate late delivery',()=>{
  c.blocksPlaced('sun',10);
  assert.equal(state.teams.sun.blocks,1);assert.equal(state.teams.sun.delivered,10);
 });
+
+test('build delivery simulation keeps pace at 5 FPS and 60 FPS without rendering',()=>{
+ const code=section('function advanceBuildLogic(elapsed) {','function tick(now) {');
+ function run(step,frames){
+   let total=0,calls=0;
+   const state={phase:'build',paused:false};
+   const c=context(code,{state,updateTeams:dt=>{total+=dt;calls++}});
+   for(let i=0;i<frames;i++) c.advanceBuildLogic(step);
+   return {total,calls,c};
+ }
+ const slow=run(0.2,25);
+ const fast=run(1/60,300);
+ assert(Math.abs(slow.total-5)<0.0001,'slow sum '+slow.total);
+ assert(Math.abs(fast.total-5)<0.0001,'fast sum '+fast.total);
+ assert(slow.calls>25,'5fps must substep deliveries instead of one 50ms tick');
+ let ran=0;
+ const c=context(code,{state:{phase:'build',paused:true},updateTeams:dt=>ran+=dt});
+ assert.equal(c.advanceBuildLogic(0.5),0);
+ assert.equal(ran,0,'paused game must not haul blocks');
+});
+test('LIVE speed URL cannot inflate paid audience actions',()=>{
+ const speedCode=section('const SPEED = (() => {','if (new URLSearchParams(location.search).get("calm") === "1")');
+ const cfg={demoSpeed:3};
+ function speed(search){
+   return vm.runInContext(speedCode+'\n SPEED;',vm.createContext({
+     CONFIG:cfg,location:{search},URLSearchParams,Number
+   }));
+ }
+ assert.equal(speed('?live=1&speed=100'),1);
+ assert.equal(speed('?live=1&speed=0.1'),1);
+ assert.equal(speed('?speed=4'),4);
+ assert.equal(speed('?speed=Infinity'),3);
+ assert.equal(speed('?speed=-1'),3);
+});
