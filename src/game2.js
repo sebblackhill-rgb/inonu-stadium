@@ -81,7 +81,7 @@ function buildStands() {
   const concrete = lam(0x3a3d48), dark = lam(0x2b2e38);
   TEAMS.forEach(t => {
     const s = sideX(t);
-    const seatA = lam(t === "home" ? 0x111111 : 0xb5121b), seatB = lam(t === "home" ? 0xa8a8a8 : 0xffcc22);
+    const seatA = lam(t === "home" ? 0x111111 : AC.n1), seatB = lam(t === "home" ? 0xa8a8a8 : AC.n2);
     for (let r = 0; r < ROWS; r++) {
       const { x, y } = standRow(t, r);
       box(RD, y + 0.1, 2 * PL + 4, concrete, x, (y - 0.1) / 2, -1);
@@ -94,7 +94,7 @@ function buildStands() {
     box(1.2, ROWS * RH + 2.4, 2 * PL + 6, dark, bx, (ROWS * RH + 2.4) / 2, -1);
     // stand name banner on the wall
     const bt = canvasTex(1024, 64, (g, w, h) => { g.fillStyle = t === "home" ? "#0b0b0b" : "#a50f1c"; g.fillRect(0, 0, w, h);
-      g.font = "900 44px Trebuchet MS"; g.textAlign = "center"; g.fillStyle = t === "home" ? "#fff" : "#ffcc22";
+      g.font = "900 44px Trebuchet MS"; g.textAlign = "center"; g.fillStyle = t === "home" ? "#fff" : AC.hi;
       g.fillText((t === "home" ? "★ " + CONFIG.teams.home.name + " ★  EV SAHİBİ TRİBÜNÜ  ★" : "★ " + CONFIG.teams.away.name + " ★  DEPLASMAN TRİBÜNÜ  ★"), w / 2, 48); });
     const banner = new THREE.Mesh(new THREE.PlaneGeometry(2 * PL + 4, 2.2), new THREE.MeshBasicMaterial({ map: bt }));
     banner.position.set(bx, ROWS * RH + 2.45, -1); banner.rotation.set(-Math.PI / 2, 0, -Math.PI / 2); scene.add(banner);

@@ -1,7 +1,7 @@
 "use strict";
 /* ================= CONFIG (rename teams / keywords / rules here) ================= */
 const CONFIG = {
-  version: "inonu-v5",
+  version: "inonu-v6",
   lang: "tr",
   matchMinutes: 90, secondsPerMinute: 2,          // 90' match = 3 real minutes
   teams: {
@@ -47,7 +47,7 @@ const STR = {
         pick: "@{n}: önce takımını seç → 1 = EV · 2 = DEP", pickHeld: "@{n}: hediyen bekliyor → 1 ya da 2 yaz!", heldApplied: "@{n} hediyesi {t} için sayıldı ✅",
         chance: "⚽ %{p}", attack: "⚡ {t} ATAKTA · tezahürat = gol şansı", boardM: "🎤 BU MAÇ", boardN: "⭐ GECENİN TARAFTARLARI",
         series: "MAÇ {m} · SERİ {h}-{a}", ftTitle: "MAÇ SONU", motm: "MAÇIN TARAFTARI", next: "SONRAKİ MAÇ {s}", seriesLine: "Seri: {hn} {h} – {a} {an}",
-        top3: "BU MAÇIN EN İYİLERİ", soundTap: "🔈 Ses kapalı — açmak için dokun", stoppage: "+ uzatma: penaltı", replay: "⏪ TEKRAR · AĞIR ÇEKİM", qual: "⚙️ Görüntü kalitesi: {q} ({f} fps)", qn: ["düşük", "orta", "yüksek"],
+        top3: "BU MAÇIN EN İYİLERİ", soundTap: "🔈 Ses kapalı — açmak için dokun", stoppage: "+ uzatma: penaltı", quiet: "🤫 Sessiz maç! Bir dahakine daha yüksek sesle 📣", rivalTonight: "🆚 Bu gecenin rakibi: {t}", preview: "👁 Önizleme sekmesi: seri ve gece tablosu kaydedilmiyor", deskHint: "📱 telefon görünümü · OBS overlay", replay: "⏪ TEKRAR · AĞIR ÇEKİM", qual: "⚙️ Görüntü kalitesi: {q} ({f} fps)", qn: ["düşük", "orta", "yüksek"],
         liveConnecting: "🔌 TikTok LIVE bağlanıyor…", liveOk: "🟢 TikTok LIVE bağlı", liveFail: "⚠️ TikTok LIVE bağlanamadı — yorumlar gelmiyor", liveLost: "⚠️ TikTok LIVE bağlantısı koptu", liveQuiet: "⚠️ {s} sn'dir LIVE olayı yok", liveRetryIn: " · {s} sn sonra tekrar ({i}/{n})", liveTap: " · tekrar denemek için dokun", liveReload: " · yeniden bağlanmak için dokun",
         ui: { title: "İNÖNÜ<br>TRİBÜN SAVAŞI", panelTitle: "TEST PANELİ", panelHide: "(H gizle)", user: "Kullanıcı", comment: "Yorum", send: "Gönder 💬", like: "Beğeni ❤️", gifts: "Hediyeler", demo: "Bot kalabalık", reset: "Seriyi sıfırla", newUser: "Yeni izleyici", on: "açık", pause: "⏸ Durdur", resume: "▶ Devam", restart: "⟳ Maçı yeniden başlat", play: "▶ OYNA", startSub: "Tribün tezahürat savaşı · TikTok LIVE", soundOn: "sesi aç 🔊", hint: "M ses · L dil TR/EN · H panel · ? yardım", mute: "Ses (M)", panelBtn: "Test paneli (H)",
               helpT: "KISAYOLLAR VE URL AYARLARI", help: [["M", "ses aç/kapa"], ["L", "dil TR/EN"], ["H", "test paneli"], ["P", "durdur/devam"], ["?", "bu yardım"], ["?bot=1", "demo kalabalık hemen başlar"], ["?live=1", "TikTok LIVE (Playroom) bağlantısı"], ["?lang=en", "İngilizce"], ["?sound=1", "ses açık başlar (ilk dokunuşta)"], ["?demo=0", "başlangıç ekranı ve bot yok"], ["?panel=0", "test paneli gizli"], ["?seed=N", "N taraftarla başla"], ["?clip=1", "video/kapak modu (elle zaman)"], ["?help=1", "bu yardım açık başlar"], ["?cx ?cy ?lx ?fov ?fp ?lk", "kamera ayarları"]], close: "kapatmak için dokun" } },
@@ -65,7 +65,7 @@ const STR = {
         pick: "@{n}: pick a team first → 1 = HOME · 2 = AWAY", pickHeld: "@{n}: your gift is waiting → type 1 or 2!", heldApplied: "@{n}'s gift counted for {t} ✅",
         chance: "⚽ {p}%", attack: "⚡ {t} ATTACKING · chant = goal chance", boardM: "🎤 THIS MATCH", boardN: "⭐ TONIGHT'S SUPPORTERS",
         series: "MATCH {m} · SERIES {h}-{a}", ftTitle: "FULL TIME", motm: "FAN OF THE MATCH", next: "NEXT MATCH {s}", seriesLine: "Series: {hn} {h} – {a} {an}",
-        top3: "TOP FANS THIS MATCH", soundTap: "🔈 Sound is off — tap to enable", stoppage: "+ stoppage: penalty", replay: "⏪ REPLAY · SLOW-MO", qual: "⚙️ Graphics quality: {q} ({f} fps)", qn: ["low", "medium", "high"],
+        top3: "TOP FANS THIS MATCH", soundTap: "🔈 Sound is off — tap to enable", stoppage: "+ stoppage: penalty", quiet: "🤫 Quiet match! Louder next time 📣", rivalTonight: "🆚 Tonight's rival: {t}", preview: "👁 Preview tab: series and night board are not saved", deskHint: "📱 phone view · OBS overlay", replay: "⏪ REPLAY · SLOW-MO", qual: "⚙️ Graphics quality: {q} ({f} fps)", qn: ["low", "medium", "high"],
         liveConnecting: "🔌 Connecting to TikTok LIVE…", liveOk: "🟢 TikTok LIVE connected", liveFail: "⚠️ TikTok LIVE failed — no comments arriving", liveLost: "⚠️ TikTok LIVE disconnected", liveQuiet: "⚠️ No LIVE events for {s} s", liveRetryIn: " · retrying in {s} s ({i}/{n})", liveTap: " · tap to retry", liveReload: " · tap to reconnect",
         ui: { title: "İNÖNÜ<br>CHANT BATTLE", panelTitle: "TEST PANEL", panelHide: "(H hide)", user: "Username", comment: "Comment", send: "Send 💬", like: "Like ❤️", gifts: "Gifts", demo: "Demo crowd", reset: "Reset series", newUser: "New viewer", on: "on", pause: "⏸ Pause", resume: "▶ Resume", restart: "⟳ Restart match", play: "▶ PLAY", startSub: "Stadium chant battle · TikTok LIVE", soundOn: "turn sound on 🔊", hint: "M sound · L language TR/EN · H panel · ? help", mute: "Sound (M)", panelBtn: "Test panel (H)",
               helpT: "KEYS AND URL OPTIONS", help: [["M", "sound on/off"], ["L", "language TR/EN"], ["H", "test panel"], ["P", "pause/resume"], ["?", "this help"], ["?bot=1", "demo crowd starts at once"], ["?live=1", "connect TikTok LIVE (Playroom)"], ["?lang=en", "English"], ["?sound=1", "start with sound (on first tap)"], ["?demo=0", "no start screen, no bots"], ["?panel=0", "hide the test panel"], ["?seed=N", "start with N fans"], ["?clip=1", "video/cover mode (manual time)"], ["?help=1", "open this help"], ["?cx ?cy ?lx ?fov ?fp ?lk", "camera overrides"]], close: "tap to close" } }
@@ -81,6 +81,36 @@ const CLIP = Q.get("clip") === "1";
 const IS_MOBILE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || Q.get("mobile") === "1";
 if (IS_MOBILE) document.body.classList.add("mobile");
 if (CLIP) document.body.classList.add("clip", "panel-hidden");
+
+/* ================= tonight's rival (report D3): fictional names + colours only, no real clubs or crests ================= */
+// CONFIG.rival: null = rotate nightly (06:00 rollover, every tab picks the same one); or a key below. URL ?rival=<key> overrides both.
+CONFIG.rival = null;
+CONFIG.rivals = {
+  martilar:  { name: "MARTILAR",  nameEn: "THE GULLS", kit: ["#2a86d1", "#ffffff"], emoji: "🔵", col: "mavi-beyaz",        colEn: "blue & white",    kw: ["martilar", "marti", "gulls"] },
+  simsekler: { name: "ŞİMŞEKLER", nameEn: "THUNDER",   kit: ["#5b2a9e", "#ffd23a"], emoji: "🟣", col: "mor-sarı",          colEn: "purple & yellow", kw: ["şimşekler", "şimşek", "thunder"] },
+  yunuslar:  { name: "YUNUSLAR",  nameEn: "DOLPHINS",  kit: ["#0e8f7a", "#ff8c1a"], emoji: "🟢", col: "yeşil-turuncu",     colEn: "green & orange",  kw: ["yunuslar", "dolphins"] },
+  ayilar:    { name: "AYILAR",    nameEn: "THE BEARS", kit: ["#e2621b", "#1d2b5c"], emoji: "🟠", col: "turuncu-lacivert",  colEn: "orange & navy",   kw: ["ayılar", "bears"] },
+  atmacalar: { name: "ATMACALAR", nameEn: "HAWKS",     kit: ["#c4141f", "#ffffff"], emoji: "🔴", col: "kırmızı-beyaz",     colEn: "red & white",     kw: ["atmacalar", "atmaca", "hawks"] },
+  misafir:   { name: "MİSAFİR",   nameEn: "VISITORS",  kit: ["#b5121b", "#ffcc22"], emoji: "🔴🟡", col: "kırmızı-sarı",    colEn: "red & yellow",    kw: [] }   // the old generic end, only by explicit choice
+};
+function pickRival() {
+  const keys = Object.keys(CONFIG.rivals).filter(k => k !== "misafir"), want = (Q.get("rival") || CONFIG.rival || "").toLowerCase();
+  if (CONFIG.rivals[want]) return want;
+  const night = Math.floor((Date.now() - new Date().getTimezoneOffset() * 60000 - 6 * 3600e3) / 86400e3);   // local night, rolls over at 06:00
+  return keys[((night % keys.length) + keys.length) % keys.length];
+}
+const RIVAL_KEY = pickRival(), RIVAL = CONFIG.rivals[RIVAL_KEY];
+{ const A = CONFIG.teams.away, homeKw = new Set(CONFIG.teams.home.keywords);
+  A.name = RIVAL.name; A.nameEn = RIVAL.nameEn; A.kit = RIVAL.kit.slice(); A.rival = RIVAL_KEY;
+  A.keywords = ["2", "22", "222", "away", "dep", "deplasman", "misafir", "visitors"].concat(RIVAL.kw, [...RIVAL.emoji]).filter((k, i, a) => k.trim() && !homeKw.has(k) && a.indexOf(k) === i);
+  STR.tr.lgA2 = RIVAL.emoji + " " + RIVAL.col; STR.en.lgA2 = RIVAL.emoji + " " + RIVAL.colEn; }
+// away palette used by every 2D/3D/CSS colour of the away end
+const hexN = h => parseInt(h.slice(1), 16), lum = h => { const n = hexN(h); return 0.299 * (n >> 16) + 0.587 * (n >> 8 & 255) + 0.114 * (n & 255); };
+const shadeHex = (h, k) => { const n = hexN(h); const f = c => Math.round(k < 0 ? c * (1 + k) : c + (255 - c) * k); return "#" + [n >> 16, n >> 8 & 255, n & 255].map(f).map(c => c.toString(16).padStart(2, "0")).join(""); };
+const AC = (() => { const [c1, c2] = RIVAL.kit, hi = lum(c2) >= lum(c1) ? c2 : c1, lo = hi === c2 ? c1 : c2;
+  return { c1, c2, n1: hexN(c1), n2: hexN(c2), hi: lum(hi) < 120 ? shadeHex(hi, 0.45) : hi, lo, dark: shadeHex(lo, -0.55), mid: shadeHex(lo, -0.25), light: shadeHex(hi, 0.4) }; })();
+CONFIG.teams.away.accent = AC.hi;
+{ const r = document.documentElement.style; r.setProperty("--a1", AC.c1); r.setProperty("--a2", AC.c2); r.setProperty("--ahi", AC.hi); r.setProperty("--alo", AC.lo); r.setProperty("--adark", AC.dark); r.setProperty("--amid", AC.mid); r.setProperty("--alight", AC.light); }
 const TEAMS = ["home", "away"];
 const other = t => t === "home" ? "away" : "home";
 const rnd = (a, b) => a + Math.random() * (b - a);

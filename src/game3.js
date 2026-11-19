@@ -6,14 +6,14 @@ const HAIR = [0x1a1210, 0x2d1d12, 0x4a3020, 0x111111, 0x8a6a3a, 0x666666];
 function kitTex(t) {
   return canvasTex(64, 64, (g, w, h) => {
     if (t === "home") { for (let i = 0; i < 8; i++) { g.fillStyle = i % 2 ? "#f4f4f4" : "#111"; g.fillRect(i * 8, 0, 8, h); } }
-    else { g.fillStyle = "#b5121b"; g.fillRect(0, 0, w, h); g.fillStyle = "#ffcc22"; g.fillRect(0, 22, w, 14); }
+    else { g.fillStyle = AC.c1; g.fillRect(0, 0, w, h); g.fillStyle = AC.c2; g.fillRect(0, 22, w, 14); }
   });
 }
 function buildFans() {
   TEAMS.forEach(t => {
     const kit = new THREE.MeshLambertMaterial({ map: kitTex(t) });
-    const sleeve = lam(t === "home" ? 0x161616 : 0xb5121b), skin = lam(0xffffff), hair = lam(0xffffff), legs = lam(0x2a2f44);
-    const scarf = lam(t === "home" ? 0xffffff : 0xffcc22);
+    const sleeve = lam(t === "home" ? 0x161616 : AC.n1), skin = lam(0xffffff), hair = lam(0xffffff), legs = lam(0x2a2f44);
+    const scarf = lam(t === "home" ? 0xffffff : AC.n2);
     const armG = new THREE.BoxGeometry(0.17, 0.6, 0.17); armG.translate(0, -0.27, 0);
     const parts = {
       torso: new THREE.InstancedMesh(new THREE.BoxGeometry(0.62, 0.72, 0.42), kit, MAXF),
@@ -25,7 +25,7 @@ function buildFans() {
     };
     const zero = new THREE.Matrix4().makeScale(0, 0, 0);
     for (const k in parts) { const m = parts[k]; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); m.frustumCulled = false; for (let i = 0; i < MAXF; i++) m.setMatrixAt(i, zero); scene.add(m); }
-    for (let i = 0; i < MAXF; i++) { parts.head.setColorAt(i, new THREE.Color(SKIN[i % SKIN.length])); const hc = (i % 5 === 0) ? (t === "home" ? 0xffffff : 0xffcc22) : HAIR[(i * 7) % HAIR.length]; parts.hair.setColorAt(i, new THREE.Color(hc)); }
+    for (let i = 0; i < MAXF; i++) { parts.head.setColorAt(i, new THREE.Color(SKIN[i % SKIN.length])); const hc = (i % 5 === 0) ? (t === "home" ? 0xffffff : AC.n2) : HAIR[(i * 7) % HAIR.length]; parts.hair.setColorAt(i, new THREE.Color(hc)); }
     parts.head.instanceColor.needsUpdate = true; parts.hair.instanceColor.needsUpdate = true;
     // rig used to compose instance matrices
     const root = new THREE.Object3D(), o = {};
@@ -87,9 +87,9 @@ function buildFX() {
   TEAMS.forEach(t => {
     const g = new THREE.Group(); const s = sideX(t), { x, y } = standRow(t, 0);
     g.position.set(x + s * -0.2, y + 0.9, -9); scene.add(g);
-    const shell = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 0.8, 16), lam(t === "home" ? 0x111111 : 0xb5121b)); shell.rotation.z = Math.PI / 2; g.add(shell);
+    const shell = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 0.8, 16), lam(t === "home" ? 0x111111 : AC.n1)); shell.rotation.z = Math.PI / 2; g.add(shell);
     [-0.41, 0.41].forEach(dx => { const sk = new THREE.Mesh(new THREE.CircleGeometry(0.86, 16), lam(0xf4f0e6)); sk.position.x = dx; sk.rotation.y = dx < 0 ? -Math.PI / 2 : Math.PI / 2; g.add(sk); });
-    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.9, 0.06, 6, 16), lam(t === "home" ? 0xffffff : 0xffcc22)); rim.rotation.y = Math.PI / 2; rim.position.x = 0.41; g.add(rim);
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.9, 0.06, 6, 16), lam(t === "home" ? 0xffffff : AC.n2)); rim.rotation.y = Math.PI / 2; rim.position.x = 0.41; g.add(rim);
     drums[t] = { g, hit: 0 };
   });
   // tifo banners (rise over the stand)
@@ -98,7 +98,7 @@ function buildFX() {
     const s = sideX(t), C = CONFIG.teams[t];
     const tex = canvasTex(1024, 256, (g, w, h) => {
       if (t === "home") { for (let i = 0; i < 16; i++) { g.fillStyle = i % 2 ? "#fff" : "#0d0d0d"; g.fillRect(i * w / 16, 0, w / 16 + 1, h); } }
-      else { const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, "#c4141f"); gr.addColorStop(0.5, "#ffcc22"); gr.addColorStop(1, "#c4141f"); g.fillStyle = gr; g.fillRect(0, 0, w, h); }
+      else { const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, AC.c1); gr.addColorStop(0.5, AC.c2); gr.addColorStop(1, AC.c1); g.fillStyle = gr; g.fillRect(0, 0, w, h); }
       g.font = "900 120px Trebuchet MS"; g.textAlign = "center"; g.lineWidth = 14; g.strokeStyle = t === "home" ? "#000" : "#6b0010"; g.fillStyle = t === "home" ? "#fff" : "#fff6c8";
       g.strokeText("★ " + C.name + " ★", w / 2, 170); g.fillText("★ " + C.name + " ★", w / 2, 170);
     });

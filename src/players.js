@@ -6,7 +6,7 @@ const FORMS = {   // [lateral -1..1, depth 0 (own goal) .. 1 (rival goal)]; inde
 CONFIG.formations = { home: "4-4-2", away: "4-3-3" };
 const KITS = {
   home: { shirt: null, sleeve: 0x141414, shorts: 0x111111, socks: 0xf2f2f2 },
-  away: { shirt: null, sleeve: 0xb5121b, shorts: 0xf4f4f4, socks: 0xb5121b },
+  away: { shirt: null, sleeve: AC.n1, shorts: AC.n2 === 0xffffff ? AC.n1 : 0xf4f4f4, socks: AC.n1 },
   gkhome: { shirt: 0x1fd16b, sleeve: 0x1fd16b, shorts: 0x0c4a24, socks: 0x1fd16b },
   gkaway: { shirt: 0x7b3cff, sleeve: 0x7b3cff, shorts: 0x2a1260, socks: 0x7b3cff },
   ref: { shirt: 0xffe14a, sleeve: 0x111111, shorts: 0x111111, socks: 0x111111 }
