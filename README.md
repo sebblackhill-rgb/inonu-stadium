@@ -17,7 +17,9 @@ Single-file browser game (Three.js r128 inlined, works offline). Portrait 9:16 f
 
 Joins use an explicit token list: every word of the comment must be one team's keyword, so "1990", "1 dakika", "go home" never seat anyone; each accepted form is logged once ("✅ “11” = EV SAHİBİ"). Actions are matched as whole words only ("dumb", "durum", "cakmakta" do nothing; "dumb davul" drums). "su"/"water" are deliberately not bottle aliases (too common in Turkish chat). Rankings: "BU MAÇ" (this match) and "GECENİN" (whole night) rotate; gifts earn 4·√diamonds, capped at 60 per match. 16 s full-time ceremony (score, series, fan of the match, top 3), then kickoff shows "MAÇ n"; match counter + series in the HUD.
 
-Tests: `node tests/acceptance.js` (headless, 54 checks: deterministic suite, live bridge, audio policy, translations, 30-min bot soak, emulated iPhone). Share clip: `node tests/record-share-clip.js`.
+Scoring rules: likes earn only like points (0.2 each, max 3/min); comments earn the 1-pt-per-2s activity point. Gift streaks are de-duplicated: with a provider streak/combo id the credited count is the highest repeatCount seen for that id; without one, a viewer+gift within 4 s is one cumulative streak (duplicates and late lower counts add nothing; a fresh "1" after >1 s is a new combo; a singles-only feed counts every event). Gift penalties convert at 60 % + 30 % × chant. Several instances sharing storage (OBS source + preview) merge: the series is only changed by read-modify-write at full time and the night board keeps each viewer's best score.
+
+Tests: `node tests/acceptance.js` (headless, 61 checks: deterministic suite, live bridge, audio policy, translations, 30-min bot soak, emulated iPhone). Share clip: `node tests/record-share-clip.js`.
 
 ## Keys / URL
 H test panel · M sound · L Turkish/English (all chrome switches) · P pause · ? help overlay. Test panel also has ⏸ pause and ⟳ restart match.

@@ -247,7 +247,7 @@ body.mobile #test-panel { position: fixed; right: 8px; bottom: 8px; z-index: 20;
 "use strict";
 /* ================= CONFIG (rename teams / keywords / rules here) ================= */
 const CONFIG = {
-  version: "inonu-v3",
+  version: "inonu-v4",
   lang: "tr",
   matchMinutes: 90, secondsPerMinute: 2,          // 90' match = 3 real minutes
   teams: {
@@ -265,11 +265,12 @@ const CONFIG = {
     lighter: ["çakmak", "lighter"]
   },
   gifts: { torchAt: 5, waveAt: 100, tifoAt: 1000, comboWindow: 1.6 },   // diamonds: <5 drum, >=5 torch, >=100 wave, >=1000 tifo + penalty
-  penalty: { conversion: 0.75 },
+  penalty: { base: 0.6, perChant: 0.3 },              // gift penalties convert 60% (silent end) … 90% (100% chant)
   // "su"/"water" were removed from bottle on purpose: "su" is an everyday Turkish word (report C4); "dum" removed (matched "dumb", A2)
   // explained, escalating throw rule: N throws within W seconds = one offence; after an offence that end's throws do not count (and do not hurt the rivals) for cooldown seconds. Offences: 1 verbal warning, 2 yellow card (−15 chant), 3+ throwing banned for banSec
   throwRule: { limit: 3, window: 20, yellowCost: 15, banSec: 30, cooldown: 20 },
-  points: { chatEvery: 2, likePts: 0.2, likeCapPerMin: 3, giftK: 4, giftCapPerMatch: 60 },   // ranking points: gifts give 4·√diamonds, capped per match
+  points: { chatEvery: 2, likePts: 0.2, likeCapPerMin: 3,   // rule: likes earn ONLY like points (0.2 each, max 3/min); the 1-pt-per-2s activity point is for comments
+            giftK: 4, giftCapPerMatch: 60 },   // ranking points: gifts give 4·√diamonds, capped per match
   demo: { maxJoins: 70, seed: 40 },               // hard cap: bots never exceed maxJoins fans in total (seed included)
   labels: 10,
   ftSec: 16,                                        // full-time ceremony length
@@ -850,10 +851,17 @@ window.__match = (comment) => { const tk = tokenize(comment); return { team: tea
 Object.assign(state, { penQ: [], pen: null, offence: { home: 0, away: 0 }, banUntil: { home: -1, away: -1 }, series: { home: 0, away: 0, draw: 0 }, matchNo: 1, lastShot: null, coolUntil: { home: -1, away: -1 }, shots: 0, paused: false });
 const nightBook = new Map();       // userId -> {name, team, pts} for the whole night (session, persisted)
 const pending = new Map();         // unassigned viewers: userId -> {name, likes, gifts:[{val, unit, giftName, t}], t}
-try { const sv = JSON.parse(localStorage.getItem("inonu-series") || "null"); if (sv) Object.assign(state.series, sv); } catch (e) {}
+// several instances (OBS source + preview tab) may share this storage: the series is only changed by read-modify-write at full time,
+// the night board is merged (max points per viewer), and other instances' writes are picked up via the storage event — nobody overwrites anybody
+const readSeries = () => { try { return Object.assign({ home: 0, away: 0, draw: 0 }, JSON.parse(localStorage.getItem("inonu-series") || "null") || {}); } catch (e) { return { home: 0, away: 0, draw: 0 }; } };
+Object.assign(state.series, readSeries());
+function bumpSeries(k) { const s = readSeries(); s[k]++; try { localStorage.setItem("inonu-series", JSON.stringify(s)); } catch (e) {} state.series = s; }
+function resetStore() { state.series = { home: 0, away: 0, draw: 0 }; nightBook.clear(); try { localStorage.setItem("inonu-series", JSON.stringify(state.series)); localStorage.setItem("inonu-night", JSON.stringify({ at: Date.now(), rows: [] })); } catch (e) {} }
+window.addEventListener("storage", e => { if (e.key === "inonu-series") state.series = readSeries(); if (e.key === "inonu-night") mergeNight(); });
 try { const nb = JSON.parse(localStorage.getItem("inonu-night") || "null"); if (nb && Date.now() - nb.at < 8 * 3600e3) nb.rows.forEach(r => nightBook.set(r.id, r)); } catch (e) {}
 let saveT = 0;
-function persist() { try { localStorage.setItem("inonu-series", JSON.stringify(state.series)); localStorage.setItem("inonu-night", JSON.stringify({ at: Date.now(), rows: [...nightBook.entries()].map(([id, r]) => Object.assign({ id }, r)).sort((a, b) => b.pts - a.pts).slice(0, 300) })); } catch (e) {} }
+function mergeNight() { try { const nb = JSON.parse(localStorage.getItem("inonu-night") || "null"); if (nb && nb.rows && Date.now() - nb.at < 8 * 3600e3) nb.rows.forEach(r => { const o = nightBook.get(r.id); if (!o || r.pts > o.pts) nightBook.set(r.id, { name: r.name, team: r.team, pts: r.pts }); }); } catch (e) {} }
+function persist() { mergeNight(); try { localStorage.setItem("inonu-night", JSON.stringify({ at: Date.now(), rows: [...nightBook.entries()].map(([id, r]) => Object.assign({ id }, r)).sort((a, b) => b.pts - a.pts).slice(0, 300) })); } catch (e) {} }
 
 /* ================= helpers ================= */
 function addChant(team, v) { if (v > 0) { const gd = state.goals[team] - state.goals[other(team)]; v *= gd < 0 ? 1.3 : gd > 0 ? 0.85 : 1; if (state.phase === "celebrate") v *= 0.5; } state.chant[team] = clamp(state.chant[team] + v, 0, 100); }
@@ -876,7 +884,8 @@ const pickBuf = new Map(); let pickFlushT = 0, promptT = -9, promptDur = 0; cons
 function askPick(id, name, held) { const last = pickSeen.get(id) || -99; if (state.time - last < 8 && !held) return; pickSeen.set(id, state.time); pickBuf.set(id, { name, held: held || (pickBuf.get(id) || {}).held }); }
 function flushPicks() {
   if (!pickBuf.size || state.time - pickFlushT < 2.6) return; pickFlushT = state.time;
-  const arr = [...pickBuf.values()]; pickBuf.clear();
+  const arr = [...pickBuf.entries()].filter(([id]) => !users.has(id)).map(e => e[1]); pickBuf.clear();   // viewers who joined meanwhile are not nagged
+  if (!arr.length) return;
   const held = arr.find(a => a.held);
   let txt = held ? T("pickHeld", { n: held.name }) : T("pick", { n: arr[0].name });
   if (arr.length > 1) txt = txt.replace("@" + (held || arr[0]).name, "@" + (held || arr[0]).name + " +" + (arr.length - 1));
@@ -885,9 +894,9 @@ function flushPicks() {
 
 /* ================= live events ================= */
 let chantSfxT = { home: -9, away: -9 };
-function fanChant(f, v, say) {
+function fanChant(f, v, say, noPts) {
   f.chantUntil = state.time + 1.6; f.score += v; f.hotUntil = state.time + 2.5; addChant(f.team, v);
-  if (state.time - f.lastChatPt >= CONFIG.points.chatEvery) { f.lastChatPt = state.time; addPts(f, 1); }
+  if (!noPts && state.time - f.lastChatPt >= CONFIG.points.chatEvery) { f.lastChatPt = state.time; addPts(f, 1); }
   if (say) { f.say = String(say).slice(0, 22); f.sayUntil = state.time + 2.2; }
   if (state.time - chantSfxT[f.team] > 2.4 && state.chant[f.team] > 25) { chantSfxT[f.team] = state.time; sfx("chant", f.team); }
 }
@@ -925,9 +934,9 @@ function joinFan(id, name, team) {
   joinBuf[team].push(name); addChant(team, 2);
   const p = pending.get(id);
   if (p) { pending.delete(id);
-    if (p.likes) { fanChant(f, Math.min(10, 0.5 * p.likes)); hearts.push({ f, t: 0 }); }
-    p.gifts.filter(g => state.time - g.t < 180).forEach(g => applyGift(f, g.val, g.unit, g.giftName, 1));
-    if (p.gifts.length) logLine(T("heldApplied", { n: name, t: tShort(team) }), team);
+    if (p.likes) { fanChant(f, Math.min(10, 0.5 * p.likes), "", true); hearts.push({ f, t: 0 }); }
+    const live = p.gifts.filter(g => state.time - g.t < 180); live.forEach(g => applyGift(f, g.val, g.unit, g.giftName, 1));
+    if (live.length) logLine(T("heldApplied", { n: name, t: tShort(team) }), team);
   }
   return f;
 }
@@ -954,21 +963,35 @@ window.handleLiveEvent = function (ev) {
     } else if (ev.type === "like") {
       const n = Math.max(1, Math.min(15, Number(ev.likeCount || ev.count) || 1));
       if (!f) { holdForUnassigned(id, name, n, null); return; }
-      fanChant(f, 0.5 * n); hearts.push({ f, t: 0 });
+      fanChant(f, 0.5 * n, "", true); hearts.push({ f, t: 0 });
       if (state.time - f.likeWinT > 60) { f.likeWinT = state.time; f.likeWin = 0; }
       const pts = Math.min(CONFIG.points.likeCapPerMin - f.likeWin, CONFIG.points.likePts * n); if (pts > 0) { f.likeWin += pts; addPts(f, pts); }
     } else if (ev.type === "gift") {
       const unit = Number(ev.diamondCount || ev.giftValue) || 1, gname = String(ev.giftName || "gift");
       // streaks: repeatCount may be cumulative while a combo is running -> only count the new part
-      const key = id + "|" + gname, agg = giftAgg.get(key), rc = Math.max(1, Number(ev.repeatCount) || 1);
-      const delta = agg && state.time - agg.t < 4 && rc > agg.lastRepeat ? rc - agg.lastRepeat : (agg && state.time - agg.t < 4 && rc === agg.lastRepeat && rc > 1 ? 0 : rc);
-      if (agg) agg.lastRepeat = rc;
+      const delta = streakDelta(id, gname, ev);
       if (delta <= 0) return;
       if (!f) { holdForUnassigned(id, name, 0, { val: unit * delta, unit, giftName: gname }); return; }
-      applyGift(f, unit * delta, unit, gname, delta, rc);
+      applyGift(f, unit * delta, unit, gname, delta, Number(ev.repeatCount) || 1);
     }
   } catch (e) { console.error(e); }
 };
+/* gift streaks, robust to both delivery contracts:
+   - provider sends a streak/combo id (streakId/comboId/groupId): credit only growth of the highest repeatCount seen for that id,
+     so duplicates and late lower counts add nothing and the total equals the provider's final count;
+   - no id: same viewer+gift within 4 s is one streak with a cumulative repeatCount (same max rule); a fresh "1" more than 1 s
+     after the last event starts a new combo; a feed that only ever sends repeatCount 1 counts every event. */
+const streaks = new Map(); window.__streaks = streaks;
+function streakDelta(id, gname, ev) {
+  const sid = ev.streakId || ev.comboId || ev.groupId || "", key = id + "|" + gname + "|" + sid, rc = Math.max(1, Math.floor(Number(ev.repeatCount) || 1));
+  let s = streaks.get(key);
+  if (s && !sid && state.time - s.t > 4) s = null;               // id-less streaks end after 4 s of silence
+  if (!s) { streaks.set(key, { max: rc, t: state.time }); if (streaks.size > 2000) streaks.delete(streaks.keys().next().value); return rc; }
+  const gap = state.time - s.t; s.t = state.time;
+  if (rc > s.max) { const d = rc - s.max; s.max = rc; return d; }
+  if (rc === 1 && (s.max === 1 || (!sid && gap > 1))) { if (!sid) s.max = 1; return 1; }   // singles feed / new combo
+  return 0;                                                        // duplicate or late lower count
+}
 /* gifts: diminishing ranking points + batched effects */
 const giftAgg = new Map(); const waveT = { home: -9, away: -9 };
 function applyGift(f, val, unit, gname, count, rc) {
@@ -1013,7 +1036,7 @@ function updateMatch(dt) {
   if (state.phase === "ft") { state.phaseT += dt; if (state.phaseT > CONFIG.ftSec) newMatch(); return; }
   if (state.minute < CONFIG.matchMinutes) state.minute = Math.min(CONFIG.matchMinutes, state.minute + dt / CONFIG.secondsPerMinute);
   if (state.phase === "celebrate") { state.phaseT += dt; if (state.phaseT > 6.5) { state.phase = "play"; resetPositions(); sfx("whistle", 1); state.chant[state.lastScorer] *= 0.55; } return; }
-  if (state.phase === "penalty") { state.phaseT += dt; if (state.phaseT > 1.5 && !state.pen.kicked) { state.pen.kicked = true; const pt = state.pen.team; state.lastShot = { c: Math.round(state.chant[pt]), p: Math.round(CONFIG.penalty.conversion * 100), pen: true }; shoot(pt, Math.random() < CONFIG.penalty.conversion, true); } return; }
+  if (state.phase === "penalty") { state.phaseT += dt; if (state.phaseT > 1.5 && !state.pen.kicked) { state.pen.kicked = true; const pt = state.pen.team, conv = CONFIG.penalty.base + CONFIG.penalty.perChant * state.chant[pt] / 100; state.lastShot = { c: Math.round(state.chant[pt]), p: Math.round(conv * 100), pen: true }; shoot(pt, Math.random() < conv, true); } return; }
   if (state.phase !== "play") return;
   // queued penalties (from big gifts) are taken at the first open-play moment — never lost during celebrations/shots
   if (state.penQ.length && !ballFly) { startPenalty(state.penQ.shift()); return; }
@@ -1050,8 +1073,7 @@ function topFans(list, key, n) { return list.filter(f => f[key] > 0).sort((a, b)
 function fullTime() {
   state.phase = "ft"; state.phaseT = 0; sfx("whistle", 3); later(0.6, () => sfx("fanfare"));
   const h = state.goals.home, a = state.goals.away, w = h === a ? null : (h > a ? "home" : "away");
-  if (w) state.series[w]++; else state.series.draw++;
-  persist();
+  bumpSeries(w || "draw"); persist();
   if (w) { teamFans[w].forEach(f => f.jumpUntil = state.time + 10); teamFans[other(w)].forEach(f => f.sadUntil = state.time + 8); confetti(w); later(2, () => confetti(w)); }
   const all = teamFans.home.concat(teamFans.away);
   const motm = topFans(w ? teamFans[w] : all, "mPts", 1)[0], top = topFans(all, "mPts", 3);
@@ -1275,7 +1297,7 @@ async function tryConnectPlayroom(manual) {
     onTikTokLiveEvent((event) => { const d = (event && event.data) || event || {}; const raw = String((event && event.type) || d.type || "chat").toLowerCase();
       if (liveState !== "ok") setLive("ok");
       handleLiveEvent({ type: raw.includes("gift") ? "gift" : raw.includes("like") ? "like" : "chat", userId: d.userId || d.uniqueId || d.username, username: d.username || d.nickName || d.uniqueId || "viewer",
-        comment: d.comment || d.content || "", giftName: d.giftName || "", diamondCount: d.diamondCount || d.giftValue || 1, repeatCount: d.repeatCount || 1, likeCount: d.likeCount || 1 }); });
+        comment: d.comment || d.content || "", giftName: d.giftName || "", diamondCount: d.diamondCount || d.giftValue || 1, repeatCount: d.repeatCount || 1, likeCount: d.likeCount || 1, streakId: d.streakId || d.comboId || d.groupId || "" }); });
     if (typeof onDisconnect === "function") onDisconnect(() => setLive("lost"));
     window.addEventListener("offline", () => setLive("lost")); }
     liveConnectedAt = state.time; setLive("ok");
@@ -1363,7 +1385,7 @@ function boot() {
   $("btn-restart").onclick = () => { newMatch(true); };
   $("help").onclick = () => toggleHelp(false);
   if (Q.get("help") === "1") toggleHelp(true);
-  $("btn-reset").onclick = () => { state.series = { home: 0, away: 0, draw: 0 }; nightBook.clear(); users.forEach(f => f.nPts = 0); persist(); refreshHUD(); };
+  $("btn-reset").onclick = () => { resetStore(); users.forEach(f => f.nPts = 0); refreshHUD(); };
   $("btn-newuser").onclick = () => { $("fake-user").value = "izleyici_" + Math.floor(Math.random() * 9000 + 1000); };
   $("panel-btn").onclick = (e) => { e.stopPropagation(); document.body.classList.toggle("panel-hidden"); fit(); };
   window.addEventListener("keydown", e => { if (/input|textarea/i.test(e.target.tagName)) return; const k = e.key.toLowerCase();

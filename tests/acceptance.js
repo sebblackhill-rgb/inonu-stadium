@@ -152,6 +152,35 @@ async function page(b, q, opts = {}) {
     return { match, night, gname, newName: nf.name, top: top.name, gPts: gEntry ? Math.round(gEntry.pts) : 0 }; }, rk.gname);
   ok('E8 per-match board resets at kickoff, all-night board keeps the night\'s top gifter', e8.match.includes(e8.newName) && !e8.match.includes(e8.gname) && e8.night.includes(e8.top) && e8.top !== e8.newName && e8.gPts >= 60, JSON.stringify({ match: e8.match.replace(/\n/g, ' / '), night: e8.night.replace(/\n/g, ' / ') }));
 
+  // ---- pass-2 items ----
+  const q2 = await p.evaluate(() => {
+    const r = {}; const credit = (uid, seq) => { const f = teamFans.away[18] ; const fan = __users.get(uid) || f; const d0 = fan.gifts; seq.forEach(([rc, sid, dt]) => { E(Object.assign({ type: 'gift', userId: fan.id, username: fan.name, giftName: 'Rose', diamondCount: 1, repeatCount: rc }, sid ? { streakId: sid } : {})); __soak(dt || 0.2); }); return fan.gifts - d0; };
+    const fid = teamFans.away[18].id;
+    r.noId = credit(fid, [[1], [2], [5], [5], [4]]); __soak(5);                       // report's sequence, no streak id -> 5
+    r.withId = credit(fid, [[1, 'A'], [3, 'A'], [2, 'A'], [3, 'A'], [6, 'A'], [1, 'B'], [2, 'B'], [6, 'A']]); __soak(5);   // A final 6 + B final 2 = 8
+    r.singles = credit(fid, [[1], [1], [1], [1]]); __soak(5);                         // feed that only sends repeatCount 1 -> 4
+    r.newCombo = credit(fid, [[1], [3, null, 1.5], [1], [2]]);                   // 3, then a new combo 1,2 after 1.5 s -> 5
+    __soak(5);
+    // C2 likes: 60 s of continuous liking (15 likes every 2 s) -> exactly the 3 pts/min like cap, no activity points
+    const lf = teamFans.home[16]; lf.mPts = 0; lf.likeWin = 0; lf.likeWinT = -999; __state.minute = 5;
+    for (let i = 0; i < 30; i++) { E({ type: 'like', userId: lf.id, username: lf.name, likeCount: 15 }); __soak(2); if (__state.phase === 'ft') __state.minute = 5; }
+    r.likePts = Math.round(lf.mPts * 100) / 100;
+    // C4 expired held gift -> no "counted" line; fresh one -> line
+    const L = document.getElementById('log'); const cnt = () => [...L.children].filter(x => /sayıldı|counted/.test(x.textContent)).length;
+    E({ type: 'gift', userId: 'late1', username: 'late1', giftName: 'Donut', diamondCount: 30 }); __soak(181); __state.minute = 5; const c0 = cnt(); E({ type: 'chat', userId: 'late1', username: 'late1', comment: '1' }); r.expiredLine = cnt() - c0;
+    r.expiredGifts = __users.get('late1').gifts;
+    E({ type: 'gift', userId: 'late2', username: 'late2', giftName: 'Donut', diamondCount: 30 }); S(3); const c1 = cnt(); E({ type: 'chat', userId: 'late2', username: 'late2', comment: '2' }); r.freshLine = cnt() - c1;
+    // C5 joining inside the prompt window removes you from the next prompt
+    S(3); E({ type: 'like', userId: 'quick1', username: 'quick1', likeCount: 2 }); E({ type: 'chat', userId: 'quick1', username: 'quick1', comment: '1' }); S(3);
+    r.prompt = document.getElementById('prompt').textContent; r.promptHasJoined = r.prompt.includes('quick1');
+    return r; });
+  ok('Pass2 C1 gift streaks: duplicates/late lower counts add nothing (1,2,5,5,4 → 5); with streak ids = final counts (6+2=8); singles feed and new combos still count', q2.noId === 5 && q2.withId === 8 && q2.singles === 4 && q2.newCombo === 5, JSON.stringify({ noId: q2.noId, withId: q2.withId, singles: q2.singles, newCombo: q2.newCombo }));
+  ok('Pass2 C2 60 s of continuous liking earns exactly the documented 3 pts/min (no activity points)', q2.likePts === 3, 'points: ' + q2.likePts);
+  ok('Pass2 C4 "gift counted" line only when a held gift was actually applied (expired → no line)', q2.expiredLine === 0 && q2.expiredGifts === 0 && q2.freshLine === 1, JSON.stringify({ expiredLine: q2.expiredLine, freshLine: q2.freshLine }));
+  ok('Pass2 C5 a viewer who joined inside the prompt window is not named in the prompt', !q2.promptHasJoined, q2.prompt || '(no prompt)');
+  const d2 = await p.evaluate(() => { const out = []; [0, 100].forEach(c => { __state.chant.home = c; __state.pen = { team: 'home', by: 'x', kicked: false }; __state.phase = 'penalty'; __state.phaseT = 1.6; const ob = shoot; let p = 0; shoot = () => {}; updateMatch(0); p = __state.lastShot.p; shoot = ob; out.push(p); __state.phase = 'play'; __state.pen = null; }); return out; });
+  ok('Pass2 D2 gift-penalty conversion follows chant (60 % silent … 90 % full)', d2[0] === 60 && d2[1] === 90, JSON.stringify(d2));
+
   // Batching: joins, gifts, drums
   const bt = await p.evaluate(() => {
     const L = document.getElementById('log'); const before = [...L.children].map(x => x.textContent);
@@ -200,6 +229,15 @@ async function page(b, q, opts = {}) {
   ok('P2 connected bridge shows OK, and a disconnect shows a warning', l2.a === 'ok' && l2.b === 'lost', l2.txt);
   ok('No console errors on live pages', lb2.errs.length === 0, lb2.errs.join(' | '));
   await lb2.close();
+  /* ---------- Pass2 C3: two instances sharing storage ---------- */
+  const i1 = await page(b, '?clip=1&demo=0'), i2 = await page(b, '?clip=1&demo=0');
+  const base = await i1.evaluate(() => JSON.parse(localStorage.getItem('inonu-series') || '{"home":0,"away":0,"draw":0}'));
+  const fin = (pg, h, a) => pg.evaluate(([h, a]) => { __state.goals.home = h; __state.goals.away = a; __state.penQ.length = 0; __state.minute = 90; __state.phase = 'play'; __step(3, 1 / 30); __soak(12); }, [h, a]);
+  await fin(i1, 2, 0); await fin(i2, 0, 1); await sleep(300);
+  await i1.evaluate(() => __soak(12)); await i2.evaluate(() => __soak(12));     // both instances persist periodically afterwards
+  const c3 = await i1.evaluate(() => ({ stored: JSON.parse(localStorage.getItem('inonu-series')), shown: __state.series }));
+  ok('Pass2 C3 two same-origin instances: stored series counts both matches and neither overwrites the other', c3.stored.home === base.home + 1 && c3.stored.away === base.away + 1 && c3.shown.home === c3.stored.home && c3.shown.away === c3.stored.away, JSON.stringify({ base, ...c3 }));
+  await i1.close(); await i2.close();
   /* ---------- E3 bounded backoff + manual retry ---------- */
   const lb3 = await page(b, '?live=1&retryScale=0.05&bridgeSrc=http://127.0.0.1:9/nope.js');
   let mid = ''; for (let i = 0; i < 40 && !/sonra tekrar|retrying/.test(mid); i++) { await sleep(100); mid = await lb3.evaluate(() => document.getElementById('livepill').textContent); }

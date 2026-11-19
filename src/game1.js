@@ -1,7 +1,7 @@
 "use strict";
 /* ================= CONFIG (rename teams / keywords / rules here) ================= */
 const CONFIG = {
-  version: "inonu-v3",
+  version: "inonu-v4",
   lang: "tr",
   matchMinutes: 90, secondsPerMinute: 2,          // 90' match = 3 real minutes
   teams: {
@@ -19,11 +19,12 @@ const CONFIG = {
     lighter: ["çakmak", "lighter"]
   },
   gifts: { torchAt: 5, waveAt: 100, tifoAt: 1000, comboWindow: 1.6 },   // diamonds: <5 drum, >=5 torch, >=100 wave, >=1000 tifo + penalty
-  penalty: { conversion: 0.75 },
+  penalty: { base: 0.6, perChant: 0.3 },              // gift penalties convert 60% (silent end) … 90% (100% chant)
   // "su"/"water" were removed from bottle on purpose: "su" is an everyday Turkish word (report C4); "dum" removed (matched "dumb", A2)
   // explained, escalating throw rule: N throws within W seconds = one offence; after an offence that end's throws do not count (and do not hurt the rivals) for cooldown seconds. Offences: 1 verbal warning, 2 yellow card (−15 chant), 3+ throwing banned for banSec
   throwRule: { limit: 3, window: 20, yellowCost: 15, banSec: 30, cooldown: 20 },
-  points: { chatEvery: 2, likePts: 0.2, likeCapPerMin: 3, giftK: 4, giftCapPerMatch: 60 },   // ranking points: gifts give 4·√diamonds, capped per match
+  points: { chatEvery: 2, likePts: 0.2, likeCapPerMin: 3,   // rule: likes earn ONLY like points (0.2 each, max 3/min); the 1-pt-per-2s activity point is for comments
+            giftK: 4, giftCapPerMatch: 60 },   // ranking points: gifts give 4·√diamonds, capped per match
   demo: { maxJoins: 70, seed: 40 },               // hard cap: bots never exceed maxJoins fans in total (seed included)
   labels: 10,
   ftSec: 16,                                        // full-time ceremony length
