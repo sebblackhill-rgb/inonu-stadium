@@ -213,7 +213,12 @@ window.handleLiveEvent = function (ev) {
       if (act) doAction(f, act);
       else fanChant(f, 3, jt ? "" : ev.comment);   // a typed team keyword chants as much as any other comment
     } else if (ev.type === "like") {
-      const n = Math.max(1, Math.min(15, Number(ev.likeCount || ev.count) || 1));
+      // Malformed counts must never turn into a legitimate one-like event.
+      // Clamp display/gameplay influence only after validating the raw count.
+      const rawLikes = ev.likeCount ?? ev.count ?? 1;
+      const validLikes = safePositiveCount(rawLikes, 100000);
+      if (validLikes === null) { console.warn("[LIVE] rejected malformed like count"); return; }
+      const n = Math.min(15, validLikes);
       if (!f) { holdForUnassigned(id, name, n, null); return; }
       fanChant(f, 0.5 * n, "", true); hearts.push({ f, t: 0 });
       if (state.time - f.likeWinT > 60) { f.likeWinT = state.time; f.likeWin = 0; }
