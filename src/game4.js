@@ -67,15 +67,16 @@ function flushJoins() {
   if (any) sfx("pop");
 }
 const pickBuf = new Map(); let pickFlushT = 0, promptT = -9, promptDur = 0; const pickSeen = new Map();
+let promptMake = null;   // rebuilt on language switch so a visible prompt never stays in the old language
 function askPick(id, name, held) { const last = pickSeen.get(id) || -99; if (state.time - last < 8 && !held) return; pickSeen.set(id, state.time); pickBuf.set(id, { name, held: held || (pickBuf.get(id) || {}).held }); }
 function flushPicks() {
   if (!pickBuf.size || state.time - pickFlushT < 2.6) return; pickFlushT = state.time;
   const arr = [...pickBuf.entries()].filter(([id]) => !users.has(id)).map(e => e[1]); pickBuf.clear();   // viewers who joined meanwhile are not nagged
   if (!arr.length) return;
   const held = arr.find(a => a.held);
-  let txt = held ? T("pickHeld", { n: held.name }) : T("pick", { n: arr[0].name });
-  if (arr.length > 1) txt = txt.replace("@" + (held || arr[0]).name, "@" + (held || arr[0]).name + " +" + (arr.length - 1));
-  $("prompt").textContent = txt; promptT = state.time; promptDur = 2.5;
+  promptMake = () => { let txt = held ? T("pickHeld", { n: held.name }) : T("pick", { n: arr[0].name });
+    if (arr.length > 1) txt = txt.replace("@" + (held || arr[0]).name, "@" + (held || arr[0]).name + " +" + (arr.length - 1)); return txt; };
+  $("prompt").textContent = promptMake(); promptT = state.time; promptDur = 2.5;
 }
 
 /* ================= live events ================= */
@@ -399,6 +400,7 @@ function applyLang() {
   $("help").innerHTML = "<h3>" + U.helpT + "</h3>" + U.help.map(h => "<div><b>" + h[0] + "</b> " + h[1] + "</div>").join("") + "<div class='c'>" + U.close + " · " + CONFIG.version + "</div>";
   const chips = $("chips"); chips.innerHTML = "";
   (EN() ? ["1", "2", "Come on!", "drum", "torch", "bottle", "lighter"] : ["1", "2", "Haydi!", "davul", "meşale", "şişe", "çakmak"]).forEach(k => { const b = document.createElement("button"); b.textContent = k; b.onclick = () => { $("fake-comment").value = k; $("btn-send").click(); }; chips.appendChild(b); });
+  if (promptMake) $("prompt").textContent = promptMake();
   $("celebrate").dataset.team = ""; $("replay-t").textContent = T("replay"); if (WX.scoreCanvas) drawScoreboard(true);
   if (liveState) setLive(liveState);
 }
@@ -544,6 +546,7 @@ function qualityMonitor(raw) {
 }
 window.__qualityMonitor = qualityMonitor;
 let hudAcc = 0, fx2Acc = 0;
+const RSKIP = Math.max(0, Number(Q.get("rskip")) || 0); let rFrame = 0;   // test-only: GPU-render every Nth frame (logic, labels and HUD still run every frame)
 function step(dt, noDraw) {
   state.time += dt;
   if (botOn) { botAcc += dt * (Number($("bot-rate").value) || 8); while (botAcc >= 1) { botAcc--; botEvent(); } }
@@ -553,11 +556,11 @@ function step(dt, noDraw) {
   if (crowdGain && !state.muted) crowdGain.gain.value = 0.04 + (state.chant.home + state.chant.away) / 200 * 0.22 + (state.phase === "celebrate" ? 0.15 : 0);
   if (noDraw) { fx2Acc += dt; return; }
   updateReplay(); updateCamera(dt + fx2Acc);
-  renderer.render(scene, camera); window.__calls = renderer.info.render.calls;
+  if (!RSKIP || ++rFrame % RSKIP === 0) { renderer.render(scene, camera); window.__calls = renderer.info.render.calls; }
   updateLabels(); updateFX2(dt + fx2Acc); fx2Acc = 0;
   hudAcc += dt; if (hudAcc > 0.2) { hudAcc = 0; refreshHUD(); }
 }
-window.__step = function (n, dt) { for (let i = 0; i < n; i++) step(dt || 1 / 30); };
+window.__step = function (n, dt) { for (let i = 0; i < n; i++) step(dt || 1 / 30, n > 1 && i < n - 1 && i % 4 !== 3); };   // multi-frame steps draw every 4th frame + the last (logic runs every step); __step(1) = one drawn frame (clip)
 window.__soak = function (sec, dt) { dt = dt || 0.05; const n = Math.round(sec / dt); for (let i = 0; i < n; i++) step(dt, i < n - 1); };   // logic-only fast-forward for soak tests
 window.__state = state; window.__users = users; window.__pending = pending; window.__nightBook = nightBook;
 let lastT = 0;
