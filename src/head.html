@@ -107,8 +107,10 @@ body.mobile #stage, body.clip #stage { border-radius: 0; box-shadow: none; }
 #series { position: absolute; left: 50%; top: 66px; transform: translateX(-50%); display: flex; gap: 6px; align-items: center; white-space: nowrap; }
 #series .chip { font-size: 10px; font-weight: 900; letter-spacing: 1px; padding: 2px 9px; border-radius: 0 0 8px 8px; background: rgba(0,0,0,.7); color: #ffd75e; }
 #series .venue2 { font-size: 9px; font-weight: 800; letter-spacing: 1.5px; color: #cfe3ff; background: rgba(0,0,0,.55); padding: 2px 8px; border-radius: 0 0 8px 8px; }
-#livepill { position: absolute; left: 50%; top: 118px; transform: translateX(-50%); z-index: 7; display: none; white-space: nowrap; font-size: 12px; font-weight: 900;
-  padding: 5px 12px; border-radius: 14px; background: rgba(0,0,0,.8); border: 2px solid #6cff8f; }
+#livepill { position: absolute; left: 8px; right: 168px; top: 88px; z-index: 7; display: none;
+  white-space: normal; overflow-wrap: anywhere; text-align: left; font-size: 11px; line-height: 1.25; font-weight: 900;
+  padding: 5px 9px; border-radius: 12px; background: rgba(0,0,0,.86); border: 2px solid #6cff8f; }
+/* Keep the LIVE failure prompt away from the top-right supporter board and bottom sound control. */
 #livepill.bad { background: #7a0b12; border-color: #ffd23a; color: #fff; font-size: 13px; box-shadow: 0 0 18px rgba(255,60,60,.7); }
 #livepill.warn { background: #5a4300; border-color: #ffd23a; }
 #livepill.bad, #livepill.tap { pointer-events: auto; cursor: pointer; }
