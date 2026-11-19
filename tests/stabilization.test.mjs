@@ -112,3 +112,39 @@ test('LIVE speed URL cannot inflate paid audience actions',()=>{
  assert.equal(speed('?speed=Infinity'),3);
  assert.equal(speed('?speed=-1'),3);
 });
+
+test('Pyramid reconnect retires old callback and accepts a single event from the new one',async()=>{
+ const registered=[],accepted=[];
+ const mod={
+   async insertCoin(){return null},
+   onTikTokLiveEvent(fn){
+     const row={fn,retired:false};registered.push(row);
+     return ()=>{row.retired=true};
+   }
+ };
+ const c=context(section('let pr = { subscribed:', '/* ---------- camera'),{
+   state:{mode:'live',conn:{tries:0,lastEvent:0,st:'off',retryAt:0}},
+   window:{Playroom:mod},LEDGER:{reconnects:0},
+   performance:{now:()=>50},console:{warn(){}},
+   diag:rec=>rec,
+   document:{
+     createElement:()=>({onload:null,onerror:null,remove(){}}),
+     head:{appendChild:s=>s.onload?.()}
+   },
+   clearTimeout(){},setTimeout:()=>1,
+   handleLiveEvent:e=>accepted.push(e)
+ });
+ await c.tryConnectPlayroom(false);
+ assert.equal(registered.length,1);
+ registered[0].fn({type:'gift',data:{userId:'QA',name:'QA',msgId:'one',giftName:'Rose',giftDiamondCount:1}});
+ assert.equal(accepted.length,1);
+ await c.tryConnectPlayroom(true);
+ assert.equal(registered.length,2);
+ assert(registered[0].retired);
+ registered[0].fn({type:'gift',data:{userId:'QA',name:'QA',msgId:'ghost',giftName:'Rose',giftDiamondCount:1}});
+ registered[1].fn({type:'gift',data:{userId:'QA',name:'QA',msgId:'two',giftName:'Rose',giftDiamondCount:1}});
+ registered[1].fn({type:'follow',data:{userId:'QA'}});
+ assert.equal(accepted.length,2);
+ assert.deepEqual(accepted.map(e=>e.eventId),['one','two']);
+ assert.equal(c.LEDGER.reconnects,1);
+});
