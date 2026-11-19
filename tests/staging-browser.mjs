@@ -37,8 +37,14 @@ try{
         canvas:document.querySelectorAll("canvas").length,
         liveUrl:location.search.includes("live=1"),version:document.title};
     });
-    await page.screenshot({path:`${OUT}/inonu-${name}.png`,fullPage:true});
-    records.push({name,result,errors});
+    await page.screenshot({path:`${OUT}/inonu-${name}-intro.png`,fullPage:true});
+    // Clip mode intentionally freezes rAF; advance game logic/render frames before
+    // judging the camera and pitch composition. Preserve both images for comparison.
+    await page.evaluate(()=>window.__step(210,1/30));
+    const afterScene=await page.evaluate(()=>({phase:window.__state.phase,
+      minute:window.__state.minute,canvas:document.querySelectorAll("canvas").length}));
+    await page.screenshot({path:`${OUT}/inonu-${name}-gameplay.png`,fullPage:true});
+    records.push({name,result,afterScene,errors});
     console.log(name,JSON.stringify({result,errors}));
     if(!result.joined || !result.rejected || !result.accepted || !result.finite || result.overflow>4 || result.canvas<1 || result.liveUrl || errors.length)
        throw Error("Failed real-browser staging acceptance for "+name);
