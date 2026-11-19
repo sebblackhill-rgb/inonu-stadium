@@ -31,10 +31,17 @@ try {
      const testLive=handleLiveEvent({type:'gift',userId:'qa-test-live',username:'QA',giftName:'Rose',diamondCount:1,source:'test'});
      s.mode=mode;
      const noHostCredit=!s.users.has('qa-test-live');
+     s.mode='live';s.conn.st='down';
+     renderWaiting();renderBoard();
+     const outageLabel=document.getElementById('wait-t').textContent;
+     const outageCorrect=/CONNECTION UNAVAILABLE/.test(outageLabel);
+     const publicBoardExcludesTest=!document.getElementById('board').textContent.includes('QA Gift');
+     s.mode=mode;s.conn.st='off';renderWaiting();renderBoard();
      const gaps=window.__conservation();
      return {joined:fan?.team==='sun',held,claimed,
        rejected:bad?.outcome==='rejected',invalidExcluded,
        noHostCredit,liveTestRejected:testLive?.outcome==='rejected',
+       outageCorrect,publicBoardExcludesTest,
        finite:Number.isFinite(s.time)&&Number.isFinite(s.bossHP),
        gapSun:gaps.sun?.gap,gapNile:gaps.nile?.gap,
        overflow:document.documentElement.scrollWidth-innerWidth,
@@ -45,6 +52,7 @@ try {
    console.log(name,JSON.stringify({report,errors}));
    if(!report.joined||!report.held||!report.claimed||!report.rejected||
       !report.invalidExcluded||!report.noHostCredit||!report.liveTestRejected||
+      !report.outageCorrect||!report.publicBoardExcludesTest||
       !report.finite||report.gapSun!==0||report.gapNile!==0||
       report.canvas<1||report.overflow>4||errors.length)
       throw Error('Pyramid Chrome staging failed: '+name);
