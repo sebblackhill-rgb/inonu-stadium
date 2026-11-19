@@ -56,6 +56,7 @@ function updateFans(t) {
       if (chanting) { const k = Math.abs(Math.sin(t * 7 + f.ph)); armL = 2.7 + k * 0.3; armR = -2.7 - k * 0.3; bob = k * 0.18; scarfOn = 1; }
       if (t < f.jumpUntil) { jump = Math.abs(Math.sin(t * 9 + f.ph)) * 0.7; armL = 2.9; armR = -2.9; scarfOn = 1; }
       if (t < f.sadUntil) { sy = 0.86; lean = 0.35; armL = 0.05; armR = -0.05; bob = 0; }
+      const mf = mexFront(); if (mf !== null && Math.abs(f.seat.z - mf) < 1.8) { jump = 0.65; armL = 2.95; armR = -2.95; scarfOn = 1; }   // Mexican wave
       if (t < f.throwUntil) { const k = clamp((f.throwUntil - t) / 0.5, 0, 1); armR = -(1 - k) * 3.2; }
       root.position.set(f.seat.x, f.seat.y + bob + jump, f.seat.z);
       root.rotation.set(0, s < 0 ? 0 : Math.PI, s * -lean * 0.5);
@@ -70,77 +71,6 @@ function updateFans(t) {
     });
     for (const k in parts) parts[k].instanceMatrix.needsUpdate = true;
   });
-}
-
-/* ================= players + ball ================= */
-const players = { home: [], away: [] };
-let ball, ballShadow, refMesh;
-function makePlayer(team, gk) {
-  const g = new THREE.Group();
-  const kit = gk ? lam(team === "home" ? 0x1fd16b : 0x2b8cff) : new THREE.MeshLambertMaterial({ map: kitTex(team) });
-  const body = box(0.7, 0.8, 0.45, kit, 0, 1.05, 0, g);
-  const head = new THREE.Mesh(new THREE.IcosahedronGeometry(0.28, 1), lam(SKIN[Math.floor(Math.random() * SKIN.length)])); head.position.y = 1.7; g.add(head);
-  const hair = box(0.5, 0.16, 0.5, lam(HAIR[Math.floor(Math.random() * 4)]), 0, 1.92, 0, g);
-  const shorts = lam(team === "home" ? 0x111111 : 0xffffff), sock = lam(team === "home" ? 0xffffff : 0xb5121b);
-  const legG = new THREE.BoxGeometry(0.2, 0.65, 0.2); legG.translate(0, -0.32, 0);
-  const lL = new THREE.Mesh(legG, sock), lR = new THREE.Mesh(legG, sock); lL.position.set(-0.17, 0.66, 0); lR.position.set(0.17, 0.66, 0); g.add(lL, lR);
-  box(0.66, 0.25, 0.42, shorts, 0, 0.62, 0, g);
-  const sh = new THREE.Mesh(new THREE.CircleGeometry(0.5, 10), new THREE.MeshBasicMaterial({ color: 0, transparent: true, opacity: 0.3 })); sh.rotation.x = -Math.PI / 2; sh.position.y = 0.03; g.add(sh);
-  g.scale.setScalar(1.25); scene.add(g);
-  return { g, lL, lR, team, gk, x: 0, z: 0, tx: 0, tz: 0, ph: Math.random() * 6, run: 0, dive: 0 };
-}
-const FORM = [[-6, 5], [6, 5], [-3.5, -1], [3.5, -1], [0, -7]];   // relative to ball, in team attack direction
-function buildPlayers() {
-  TEAMS.forEach(t => { for (let i = 0; i < 5; i++) players[t].push(makePlayer(t, false)); players[t].push(makePlayer(t, true)); });
-  ball = new THREE.Mesh(new THREE.IcosahedronGeometry(0.38, 1), new THREE.MeshLambertMaterial({ color: 0xffffff })); scene.add(ball);
-  ballShadow = new THREE.Mesh(new THREE.CircleGeometry(0.4, 10), new THREE.MeshBasicMaterial({ color: 0, transparent: true, opacity: 0.35 })); ballShadow.rotation.x = -Math.PI / 2; ballShadow.position.y = 0.03; scene.add(ballShadow);
-  refMesh = makePlayer("home", true); refMesh.g.children[0].material = lam(0xffd400); refMesh.g.scale.setScalar(1.15);
-  resetPositions();
-}
-function attackDir(t) { return t === "home" ? -1 : 1; }    // home attacks toward z = -PL (far goal)
-function resetPositions() {
-  TEAMS.forEach(t => players[t].forEach((p, i) => { const d = attackDir(t); if (p.gk) { p.x = 0; p.z = -d * (PL - 1); } else { p.x = FORM[i][0] * 0.8; p.z = -d * (3 + Math.abs(FORM[i][1]) * 0.6); } p.tx = p.x; p.tz = p.z; }));
-  state.ballX = 0; state.ballZ = 0; ballFly = null;
-}
-let ballFly = null;   // {from, to, t, dur, h, onDone}
-function shoot(team, scoreIt, pen) {
-  const d = attackDir(team), gz = d * (PL + (scoreIt ? 0.9 : 0.2));
-  const tx = scoreIt ? rnd(-2.0, 2.0) : (Math.random() < 0.5 ? rnd(-4.5, -2.8) : rnd(2.8, 4.5));
-  ballFly = { fx: state.ballX, fz: state.ballZ, tx, tz: gz, t: 0, dur: pen ? 0.7 : 0.85, h: scoreIt ? 1.2 : 1.6, team, scoreIt };
-  const gk = players[other(team)].find(p => p.gk); gk.dive = 1; gk.diveDir = scoreIt ? -Math.sign(tx || 1) : Math.sign(tx);
-  sfx("kick"); state.phase = "shot";
-}
-function updatePlayers(dt, t) {
-  const bx = state.ballX, bz = state.ballZ;
-  TEAMS.forEach(team => {
-    const d = attackDir(team);
-    players[team].forEach((p, i) => {
-      if (p.gk) { p.tz = -d * (PL - 1.2); p.tx = clamp(bx * 0.35, -2, 2); }
-      else if (state.phase === "celebrate" && state.lastScorer === team) { p.tx = lerp(p.tx, -sideX(team) * -12 * 0 + (i - 2) * 1.6, 0.02); p.tz = lerp(p.tz, d * (PL - 6), 0.02); }
-      else { const f = FORM[i]; p.tx = clamp(bx * 0.5 + f[0], -PW + 1, PW - 1); p.tz = clamp(bz + d * f[1] * (team === "home" ? 1 : 1) - d * 2, -PL + 2, PL - 2); }
-      const dx = p.tx - p.x, dz = p.tz - p.z, dist = Math.hypot(dx, dz), sp = Math.min(dist, 7 * dt);
-      if (dist > 0.05) { p.x += dx / dist * sp; p.z += dz / dist * sp; p.g.rotation.y = Math.atan2(dx, dz); }
-      p.run = lerp(p.run, dist > 0.3 ? 1 : 0, 0.1);
-      const sw = Math.sin(t * 12 + p.ph) * 0.7 * p.run; p.lL.rotation.x = sw; p.lR.rotation.x = -sw;
-      let y = 0; if (state.phase === "celebrate" && state.lastScorer === team) y = Math.abs(Math.sin(t * 8 + p.ph)) * 0.6;
-      p.g.position.set(p.x, y, p.z);
-      if (p.gk) { if (p.dive > 0) { p.dive = Math.max(0, p.dive - dt * 0.9); const k = Math.sin((1 - p.dive) * Math.PI); p.g.rotation.z = (p.diveDir || 1) * k * 1.3; p.g.position.x = p.x + (p.diveDir || 1) * k * 2.2; } else p.g.rotation.z = 0; p.g.rotation.y = d > 0 ? Math.PI : 0; }
-    });
-  });
-  // referee follows play
-  refMesh.tx = state.ballX + 6; refMesh.tz = state.ballZ + 3;
-  const rdx = refMesh.tx - refMesh.x, rdz = refMesh.tz - refMesh.z, rd = Math.hypot(rdx, rdz);
-  if (rd > 0.1) { const sp = Math.min(rd, 5 * dt); refMesh.x += rdx / rd * sp; refMesh.z += rdz / rd * sp; refMesh.g.rotation.y = Math.atan2(rdx, rdz); }
-  refMesh.g.position.set(clamp(refMesh.x, -PW + 0.5, PW - 0.5), 0, refMesh.z);
-  // ball
-  let by = 0.38;
-  if (ballFly) {
-    ballFly.t += dt; const k = Math.min(1, ballFly.t / ballFly.dur);
-    state.ballX = lerp(ballFly.fx, ballFly.tx, k); state.ballZ = lerp(ballFly.fz, ballFly.tz, k); by = 0.38 + Math.sin(k * Math.PI * 0.85) * ballFly.h * 1.4;
-    if (k >= 1) { const bf = ballFly; ballFly = null; shotResult(bf); }
-  }
-  ball.position.set(state.ballX, by, state.ballZ); ball.rotation.x += dt * 8; ball.rotation.z += dt * 3;
-  ballShadow.position.set(state.ballX, 0.03, state.ballZ);
 }
 
 /* ================= effects: flares, smoke, projectiles, drums, tifo ================= */
