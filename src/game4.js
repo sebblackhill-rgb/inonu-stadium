@@ -227,7 +227,7 @@ window.handleLiveEvent = function (ev) {
       // streaks: repeatCount may be cumulative while a combo is running -> only count the new part
       const delta = streakDelta(id, gname, ev);
       if (delta <= 0) return;
-      if (!f) { holdForUnassigned(id, name, 0, { val: unit * delta, unit, giftName: gname }); return; }
+      if (!f) { holdForUnassigned(id, name, 0, { val: unit * delta, unit, giftName: gname, count: delta }); return; }
       applyGift(f, unit * delta, unit, gname, delta, Number(ev.repeatCount) || 1);
     }
   } catch (e) { console.error(e); }
