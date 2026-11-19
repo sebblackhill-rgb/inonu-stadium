@@ -5,7 +5,15 @@ const ARGS = ['--no-sandbox', '--use-gl=angle', '--use-angle=swiftshader', '--en
 const results = []; const ok = (name, pass, info) => { results.push({ name, pass: !!pass, info }); console.log((pass ? 'PASS ' : 'FAIL ') + name + (info ? '  — ' + info : '')); };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 async function page(b, q, opts = {}) {
-  const p = await b.newPage(); if (opts.phone) await p.emulate(puppeteer.KnownDevices['iPhone 13']); else await p.setViewport({ width: 540, height: 960 });
+  const p = await b.newPage(); if (opts.phone) await p.emulate(puppeteer.KnownDevices['iPhone 13']); else await p.setViewport(opts.viewport || { width: 540, height: 960 });
+  if (opts.raf === 'throttle') await p.evaluateOnNewDocument(() => { window.requestAnimationFrame = cb => setTimeout(() => cb(performance.now()), 1000); });   // occluded/slow tab: 1 fps
+  if (opts.raf === 'hideable') await p.evaluateOnNewDocument(() => {   // model a hidden tab: document.hidden + rAF stops (like Chrome), resumes when shown
+    let hidden = false; const q = [], raf = window.requestAnimationFrame.bind(window);
+    Object.defineProperty(document, 'hidden', { get: () => hidden }); Object.defineProperty(document, 'visibilityState', { get: () => hidden ? 'hidden' : 'visible' });
+    window.requestAnimationFrame = cb => hidden ? q.push(cb) : raf(cb);
+    window.__setHidden = h => { hidden = h; document.dispatchEvent(new Event('visibilitychange')); if (!h) q.splice(0).forEach(cb => raf(cb)); }; });
+  if (opts.spyStorage) await p.evaluateOnNewDocument(() => { window.__lsWrites = []; const s = Storage.prototype.setItem, r = Storage.prototype.removeItem;
+    Storage.prototype.setItem = function (k, v) { window.__lsWrites.push(k); return s.call(this, k, v); }; Storage.prototype.removeItem = function (k) { window.__lsWrites.push(k); return r.call(this, k); }; });
   p.errs = []; p.warns = []; p.on('pageerror', e => p.errs.push('pageerror ' + e.message)); p.on('console', m => { if (m.type() === 'error') p.errs.push('console.error ' + m.text()); if (m.type() === 'warn' || m.type() === 'warning') p.warns.push(m.text()); });
   if (opts.autoplay) await p.evaluateOnNewDocument(() => {   // Chrome ignores --autoplay-policy under automation, so model its rule: no audio until a real user activation
     const AC = window.AudioContext;
@@ -232,15 +240,21 @@ async function page(b, q, opts = {}) {
   ok('P2 connected bridge shows OK, and a disconnect shows a warning', l2.a === 'ok' && l2.b === 'lost', l2.txt);
   ok('No console errors on live pages', lb2.errs.length === 0, lb2.errs.join(' | '));
   await lb2.close();
-  /* ---------- Pass2 C3: two instances sharing storage ---------- */
-  const i1 = await page(b, '?clip=1&demo=0'), i2 = await page(b, '?clip=1&demo=0');
+  /* ---------- Pass2 C3 + Pass3 B3: tabs sharing storage -> exactly one writer; ?write=0 never writes ---------- */
+  const i1 = await page(b, '?clip=1&demo=0'); await sleep(300); const i2 = await page(b, '?clip=1&demo=0'), i3 = await page(b, '?clip=1&demo=0&write=0', { spyStorage: true });
   const base = await i1.evaluate(() => JSON.parse(localStorage.getItem('inonu-series') || '{"home":0,"away":0,"draw":0}'));
   const fin = (pg, h, a) => pg.evaluate(([h, a]) => { __state.goals.home = h; __state.goals.away = a; __state.penQ.length = 0; __state.minute = 90; __state.phase = 'play'; __step(3, 1 / 30); __soak(12); }, [h, a]);
-  await fin(i1, 2, 0); await fin(i2, 0, 1); await sleep(300);
-  await i1.evaluate(() => __soak(12)); await i2.evaluate(() => __soak(12));     // both instances persist periodically afterwards
-  const c3 = await i1.evaluate(() => ({ stored: JSON.parse(localStorage.getItem('inonu-series')), shown: __state.series }));
-  ok('Pass2 C3 two same-origin instances: stored series counts both matches and neither overwrites the other', c3.stored.home === base.home + 1 && c3.stored.away === base.away + 1 && c3.shown.home === c3.stored.home && c3.shown.away === c3.stored.away, JSON.stringify({ base, ...c3 }));
-  await i1.close(); await i2.close();
+  await fin(i1, 2, 0); await fin(i2, 0, 1); await fin(i3, 0, 3); await sleep(300);
+  await i1.evaluate(() => __soak(12)); await i2.evaluate(() => __soak(12)); await i3.evaluate(() => __soak(12));
+  const c3 = await i1.evaluate(() => ({ stored: JSON.parse(localStorage.getItem('inonu-series')), shown: __state.series, w1: __isWriter() }));
+  const c3b = await i2.evaluate(() => ({ shown: __state.series, w2: __isWriter(), log: [...document.querySelectorAll('#log div')].some(d => /Önizleme|Preview/.test(d.textContent)) }));
+  const c3c = await i3.evaluate(() => ({ writes: window.__lsWrites.filter(k => /^inonu-/.test(k)), w3: __isWriter() }));
+  ok('P3 B3 two tabs: the series increments exactly once (the writer tab), the second tab shows it without writing', c3.w1 && !c3b.w2 && c3.stored.home === base.home + 1 && c3.stored.away === base.away && c3b.shown.home === c3.stored.home && c3b.log, JSON.stringify({ base, ...c3, ...c3b }));
+  ok('P3 B3 a ?write=0 preview tab never writes series, night board or the writer lock', !c3c.w3 && c3c.writes.length === 0, JSON.stringify(c3c));
+  await i1.close(); await sleep(6500);
+  const take = await i2.evaluate(() => { claimWriter(); return __isWriter(); });
+  ok('P3 B3 when the writer tab closes, the next tab takes over writing', take, String(take));
+  await i2.close(); await i3.close();
   /* ---------- E3 bounded backoff + manual retry ---------- */
   const lb3 = await page(b, '?live=1&retryScale=0.05&bridgeSrc=http://127.0.0.1:9/nope.js');
   let mid = ''; for (let i = 0; i < 40 && !/sonra tekrar|retrying/.test(mid); i++) { await sleep(100); mid = await lb3.evaluate(() => document.getElementById('livepill').textContent); }
@@ -330,6 +344,76 @@ async function page(b, q, opts = {}) {
   const lk = await page(b, '?demo=0&q=low'); await sleep(1200);
   const v9 = await lk.evaluate(() => { for (let i = 0; i < 300; i++) __qualityMonitor(1 / 10); return { q: __quality }; });
   ok('V9 ?q=low locks quality (no auto changes)', v9.q === 'low', JSON.stringify(v9)); await lk.close();
+
+  /* ---------- Pass 3 (v6) ---------- */
+  // B1: the in-world stadium screen never lands under the HUD strip at the kickoff sweep or during the full-time ceremony (desktop + ?mobile=1)
+  for (const [lab, q, vp] of [['desktop', '?clip=1&demo=0', null], ['?mobile=1', '?mobile=1&demo=0', { width: 1280, height: 720 }]]) {
+    const sp = await page(b, q, vp ? { viewport: vp } : {}); await sleep(800);
+    const b1 = await sp.evaluate(() => {
+      const st = document.getElementById('stage').getBoundingClientRect(), sc = st.width / W;
+      const R = id => { const e = document.getElementById(id), r = e.getBoundingClientRect(); return r.width ? { id, x0: (r.left - st.left) / sc, y0: (r.top - st.top) / sc, x1: (r.right - st.left) / sc, y1: (r.bottom - st.top) / sc } : null; };
+      const strip = ['score', 'series', 'serieschip', 'venue', 'meters', 'board'].map(R).filter(Boolean);
+      const band = Math.max(...strip.filter(h => h.id !== 'board').map(h => h.y1));
+      const rect = () => { const s = WX.screen; s.updateMatrixWorld(true); camera.updateMatrixWorld(true); let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9, behind = false;
+        for (const [cx, cy] of [[-4.7, -1.6], [4.7, -1.6], [-4.7, 1.6], [4.7, 1.6]]) { const v = new THREE.Vector3(cx, cy, 0).applyMatrix4(s.matrixWorld).project(camera); if (v.z > 1) behind = true; const X = (v.x + 1) / 2 * W, Y = (1 - v.y) / 2 * H; x0 = Math.min(x0, X); x1 = Math.max(x1, X); y0 = Math.min(y0, Y); y1 = Math.max(y1, Y); }
+        return { x0, y0, x1, y1, off: behind || x1 < 0 || x0 > W || y1 < 0 || y0 > H }; };
+      const hit = r => !r.off && (r.y0 < band || strip.some(h => r.x0 < h.x1 && r.x1 > h.x0 && r.y0 < h.y1 && r.y1 > h.y0));
+      const bad = [];
+      for (let k = 0; k <= 1.0001; k += 0.1) { introHold = false; introStart = state.time - k * INTRO; updateCamera(10); const r = rect(); if (hit(r)) bad.push('kickoff k=' + k.toFixed(1) + ' ' + [r.x0, r.y0, r.x1, r.y1].map(Math.round)); }
+      introStart = state.time - 99; __state.penQ.length = 0; __state.minute = 90; __state.phase = 'play'; let dims = [], ft = 0;
+      for (let i = 0; i < 16 * 3; i++) { __step(10, 1 / 30); if (__state.phase !== 'ft') continue; ft++; for (let j = 0; j < 4; j++) updateCamera(1 / 30); const r = rect(); dims.push(WX.screenPanel.material.color.r); if (hit(r)) bad.push('ft ' + [r.x0, r.y0, r.x1, r.y1].map(Math.round)); }
+      return { bad, ftSamples: ft, dimmed: dims.length > 0 && Math.max(...dims) < 0.5, band: Math.round(band) }; });
+    ok(`P3 B1 (${lab}) stadium screen never intersects the HUD strip during the kickoff sweep or the full-time ceremony, and is dimmed under the ceremony`, b1.bad.length === 0 && b1.ftSamples > 5 && b1.dimmed, JSON.stringify(b1).slice(0, 300));
+    await sp.close();
+  }
+  // B2 + C5: prompt and sound pill never intersect; empty prompt is hidden
+  const bp = await page(b, '?sound=1&demo=0', { autoplay: true }); await sleep(1500);
+  const b2 = await bp.evaluate(async () => { const pr = document.getElementById('prompt'), sp = document.getElementById('soundpill');
+    const emptyHidden = getComputedStyle(pr).display === 'none';
+    pickFlushT = -9; handleLiveEvent({ type: 'like', userId: 'b2x', username: 'cem34', likeCount: 5 }); let both = 0, inter = 0;
+    for (let i = 0; i < 30; i++) { await new Promise(r => setTimeout(r, 100)); const a = pr.getBoundingClientRect(), c = sp.getBoundingClientRect(); const vis = getComputedStyle(pr).display !== 'none' && +getComputedStyle(pr).opacity > 0 && sp.offsetParent;
+      if (vis) { both++; if (a.left < c.right && a.right > c.left && a.top < c.bottom && a.bottom > c.top) inter++; } }
+    await new Promise(r => setTimeout(r, 3000)); const hiddenAfter = getComputedStyle(pr).display === 'none';
+    return { emptyHidden, both, inter, hiddenAfter, pill: !!sp.offsetParent }; });
+  ok('P3 B2 ?sound=1 + unjoined like: pick prompt and sound pill are both shown and never intersect (prompt stacked above)', b2.pill && b2.both > 3 && b2.inter === 0, JSON.stringify(b2));
+  ok('P3 C5 the prompt element is hidden when empty / between flushes', b2.emptyHidden && b2.hiddenAfter, JSON.stringify(b2));
+  await bp.close();
+  // B5, B7, D3, desktop hint (deterministic page)
+  const dp = await page(b, '?clip=1&demo=0&rival=ayilar');
+  const d3 = await dp.evaluate(() => { const css = getComputedStyle(document.documentElement);
+    const j = __match('ayılar').join || (__match('ayılar').team) || null; const res = handleLiveEvent({ type: 'chat', userId: 'bearfan', username: 'bearfan', comment: 'ayılar' }); const f = __users.get('bearfan');
+    const names = Object.values(CONFIG.rivals).map(r => r.name + ' ' + r.nameEn).join(' ');
+    return { away: tName('away'), en: CONFIG.teams.away.nameEn, a1: css.getPropertyValue('--a1').trim(), kit: CONFIG.teams.away.kit, joined: f && f.team, seatsAway: [...document.querySelectorAll('#name-away')].map(e => e.innerText.split('\n')[0])[0],
+      real: /GALATASARAY|FENERBAH|BE[SŞ]İKTA|TRABZON|C[İI]MBOM|BURSASPOR|G[ÖO]ZTEPE|SAMSUNSPOR|ANTALYASPOR|KONYASPOR|SİVASSPOR|KAYSERİ|BAŞAKŞEHİR|FENER|ASLAN|KANARYA/i.test(names), keys: Object.keys(CONFIG.rivals), kw: CONFIG.teams.away.keywords }; });
+  ok('P3 D3 ?rival= picks a fictional rival: name, kit colours (CSS + 3D palette) and join keyword all switch; no real club names', d3.away === 'AYILAR' && d3.seatsAway === 'AYILAR' && d3.a1 === '#e2621b' && d3.joined === 'away' && !d3.real && !d3.kw.includes('⚪') && !d3.kw.includes('⚫'), JSON.stringify(d3).slice(0, 300));
+  const b57 = await dp.evaluate(() => { __seedCrowd(10); users.forEach(u => u.mPts = 0); __state.warnings.home = 3; __state.warnings.away = 2; __state.penQ.length = 0; __state.minute = 90; __state.phase = 'play'; __step(3, 1 / 30);
+    const panel = document.getElementById('ftpanel').innerText; __soak(CONFIG.ftSec + 2); return { panel, phase: __state.phase, w: Object.assign({}, __state.warnings) }; });
+  ok('P3 B5 quiet match: full-time panel shows "Sessiz maç!" instead of an empty top-3 section', /Sessiz maç/.test(b57.panel) && !/EN İYİLERİ/.test(b57.panel), b57.panel.replace(/\n/g, ' / '));
+  ok('P3 B7 state.warnings resets to 0 for both ends at kickoff', b57.phase === 'play' && b57.w.home === 0 && b57.w.away === 0, JSON.stringify(b57.w));
+  await dp.close();
+  const nr = [await page(b, '?clip=1&demo=0'), await page(b, '?clip=1&demo=0')];
+  const picks = await Promise.all(nr.map(x => x.evaluate(() => RIVAL_KEY)));
+  ok('P3 D3 default rival rotates nightly and every tab agrees on tonight\'s rival (never the old generic end)', picks[0] === picks[1] && picks[0] !== 'misafir', picks.join());
+  await Promise.all(nr.map(x => x.close()));
+  const wd = await page(b, '?demo=0', { viewport: { width: 1600, height: 900 } }); await sleep(600);
+  const hint = await wd.evaluate(() => ({ wide: document.body.classList.contains('wide'), txt: document.getElementById('deskhint').textContent, vis: getComputedStyle(document.getElementById('deskhint')).display !== 'none' }));
+  await wd.close(); const ph2 = await page(b, '?demo=0', { phone: true }); await sleep(600);
+  const hintP = await ph2.evaluate(() => getComputedStyle(document.getElementById('deskhint')).display); await ph2.close();
+  ok('P3 desktop hint: wide desktop shows "telefon görünümü · OBS overlay" in the margin; phones do not', hint.wide && hint.vis && /telefon görünümü · OBS overlay/.test(hint.txt) && hintP === 'none', JSON.stringify({ hint, hintP }));
+  // B4: wall-clock match time when rAF is throttled to 1 fps and when the tab is hidden (no rendering while hidden)
+  const tp = await page(b, '?demo=0', { raf: 'throttle' }); await sleep(1500);
+  const t0 = await tp.evaluate(() => ({ t: __state.time, m: __state.minute })); await sleep(10000); const t1 = await tp.evaluate(() => ({ t: __state.time, m: __state.minute }));
+  const thr = { sim: +(t1.t - t0.t).toFixed(2), minutes: +(t1.m - t0.m).toFixed(2) };
+  ok('P3 B4 throttled tab (rAF at 1 fps): 10 wall-seconds still play ~10 s / ~5 game-minutes', thr.sim > 8.5 && thr.sim < 11.5 && thr.minutes > 4.2 && thr.minutes < 5.8, JSON.stringify(thr));
+  await tp.close();
+  const hp = await page(b, '?demo=0', { raf: 'hideable' }); await sleep(1500);
+  const h0 = await hp.evaluate(() => { window.__setHidden(true); return { t: __state.time, m: __state.minute, f: renderer.info.render.frame }; }); await sleep(10000);
+  const h1 = await hp.evaluate(() => ({ t: __state.time, m: __state.minute, f: renderer.info.render.frame }));
+  await hp.evaluate(() => window.__setHidden(false)); await sleep(1500); const h2 = await hp.evaluate(() => ({ t: __state.time, f: renderer.info.render.frame }));
+  const hid = { sim: +(h1.t - h0.t).toFixed(2), minutes: +(h1.m - h0.m).toFixed(2), framesWhileHidden: h1.f - h0.f, framesAfter: h2.f - h1.f, simAfter: +(h2.t - h1.t).toFixed(2) };
+  ok('P3 B4 hidden tab: match keeps real time (10 s → ~5 game-minutes), nothing rendered while hidden, resumes rendering when shown', hid.sim > 8.5 && hid.sim < 11.5 && hid.minutes > 4.2 && hid.framesWhileHidden === 0 && hid.framesAfter > 0 && hid.simAfter < 3, JSON.stringify(hid));
+  ok('P3 no console errors on throttled/hidden pages', tp.errs.length === 0 && hp.errs.length === 0, tp.errs.concat(hp.errs).slice(0, 3).join(' | '));
+  await hp.close();
 
   /* ---------- E6 soak: ?bot=1 at 8/s for 30 simulated minutes ---------- */
   const sk = await page(b, '?clip=1&demo=0');
