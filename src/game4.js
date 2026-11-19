@@ -196,7 +196,7 @@ function applyGift(f, val, unit, gname, count, rc) {
   else if (unit >= G.torchAt) doAction(f, "torch");
   else doAction(f, "drum");
 }
-function standWave(f) { addChant(f.team, 25); state.momentum = clamp(state.momentum + (f.team === "home" ? 0.35 : -0.35), -1, 1); teamFans[f.team].forEach(o => o.chantUntil = state.time + 3 + Math.abs(o.seat.z + 2) * 0.05); showPop(T("wave"), "@" + f.name + " 🌊", f.team, 1.8, "small", 1); for (let i = 0; i < 3; i++) hitDrum(f.team); }
+function standWave(f) { startMexWave(); addChant(f.team, 25); state.momentum = clamp(state.momentum + (f.team === "home" ? 0.35 : -0.35), -1, 1); teamFans[f.team].forEach(o => o.chantUntil = state.time + 3 + Math.abs(o.seat.z + 2) * 0.05); showPop(T("wave"), "@" + f.name + " 🌊", f.team, 1.8, "small", 1); for (let i = 0; i < 3; i++) hitDrum(f.team); }
 function tifo(f) {
   const tf = tifos[f.team]; tf.start = state.time; tf.until = state.time + 5; addChant(f.team, 50); state.momentum = f.team === "home" ? 0.9 : -0.9;
   sfx("roar"); state.shake = 0.6;
@@ -212,7 +212,7 @@ function tifo(f) {
 let shotCooldown = 2;
 function startPenalty(p) {
   ballFly = null; state.pen = Object.assign({ kicked: false }, p); state.phase = "penalty"; state.phaseT = 0;
-  const d = attackDir(p.team); state.ballX = 0; state.ballZ = d * (PL - 5.5); sfx("whistle", 1);
+  const d = attackDir(p.team); state.ballX = 0; state.ballZ = d * (PL - 3.9); sfx("whistle", 1);
   showPop(T("pen"), T("penBy", { n: p.by }), p.team, 1.4, "small", 3);
 }
 function updateMatch(dt) {
@@ -221,7 +221,7 @@ function updateMatch(dt) {
   if (state.phase === "intro") { if (!introHold && state.time - introStart > 1.2) { state.phase = "play"; sfx("whistle", 2); showPop(T("start"), "", "", 1.4, "small", 1); } return; }
   if (state.phase === "ft") { state.phaseT += dt; if (state.phaseT > CONFIG.ftSec) newMatch(); return; }
   if (state.minute < CONFIG.matchMinutes) state.minute = Math.min(CONFIG.matchMinutes, state.minute + dt / CONFIG.secondsPerMinute);
-  if (state.phase === "celebrate") { state.phaseT += dt; if (state.phaseT > 6.5) { state.phase = "play"; resetPositions(); sfx("whistle", 1); state.chant[state.lastScorer] *= 0.55; } return; }
+  if (state.phase === "celebrate") { state.phaseT += dt; if (state.phaseT > 2.2 && !state.replayDone) { state.replayDone = true; if (startReplay()) camera.position.set(9e9, 0, 0); } if (state.phaseT > 6.5) { state.phase = "play"; resetPositions(); sfx("whistle", 1); state.chant[state.lastScorer] *= 0.55; } return; }
   if (state.phase === "penalty") { state.phaseT += dt; if (state.phaseT > 1.5 && !state.pen.kicked) { state.pen.kicked = true; const pt = state.pen.team, conv = CONFIG.penalty.base + CONFIG.penalty.perChant * state.chant[pt] / 100; state.lastShot = { c: Math.round(state.chant[pt]), p: Math.round(conv * 100), pen: true }; shoot(pt, Math.random() < conv, true); } return; }
   if (state.phase !== "play") return;
   // queued penalties (from big gifts) are taken at the first open-play moment — never lost during celebrations/shots
@@ -232,6 +232,7 @@ function updateMatch(dt) {
   state.momentum = clamp(lerp(state.momentum, target, dt * 0.8), -1, 1);
   const tz = -state.momentum * (PL - 2) + Math.sin(state.time * 1.3) * 2.5, tx = Math.sin(state.time * 0.8) * 5.5 + Math.sin(state.time * 2.1) * 1.5;
   state.ballZ = lerp(state.ballZ, tz, dt * 0.9); state.ballX = lerp(state.ballX, tx, dt * 1.2);
+  if (state.chant.home + state.chant.away > 120 && Math.random() < dt * 0.04) startMexWave();
   shotCooldown -= dt;
   if (shotCooldown <= 0) TEAMS.forEach(t => {
     if (state.phase !== "play" || !inAttack(t)) return;
@@ -252,7 +253,7 @@ function goal(team) {
   goals[attackDir(team)].net.userData.shake = 1;
   teamFans[team].forEach(f => f.jumpUntil = state.time + rnd(3, 5));
   teamFans[other(team)].forEach(f => f.sadUntil = state.time + rnd(2.5, 4));
-  addChant(team, 25); state.momentum = 0; celebT = state.time; celebTeam = team;
+  addChant(team, 25); state.momentum = 0; celebT = state.time; celebTeam = team; state.replayDone = false; paperRain(team);
   confetti(team);
 }
 function topFans(list, key, n) { return list.filter(f => f[key] > 0).sort((a, b) => b[key] - a[key]).slice(0, n); }
@@ -398,7 +399,7 @@ function applyLang() {
   $("help").innerHTML = "<h3>" + U.helpT + "</h3>" + U.help.map(h => "<div><b>" + h[0] + "</b> " + h[1] + "</div>").join("") + "<div class='c'>" + U.close + " · " + CONFIG.version + "</div>";
   const chips = $("chips"); chips.innerHTML = "";
   (EN() ? ["1", "2", "Come on!", "drum", "torch", "bottle", "lighter"] : ["1", "2", "Haydi!", "davul", "meşale", "şişe", "çakmak"]).forEach(k => { const b = document.createElement("button"); b.textContent = k; b.onclick = () => { $("fake-comment").value = k; $("btn-send").click(); }; chips.appendChild(b); });
-  $("celebrate").dataset.team = "";
+  $("celebrate").dataset.team = ""; $("replay-t").textContent = T("replay"); if (WX.scoreCanvas) drawScoreboard(true);
   if (liveState) setLive(liveState);
 }
 function drawCrest(t) {
@@ -512,26 +513,47 @@ function updateCamera(dt) {
   const t = state.time, bz = state.ballZ;
   const tall = Math.max(1, (H / W) / (960 / 540)); let fov = CAMFOV * Math.pow(tall, FOVP);   // tall phones: keep both goals in view, spend the extra height on the Bosphorus instead of empty terrace
   camPos.set(CAMX + Math.sin(t * 0.15) * 1.5, CAMY, bz * 0.25 * (2 - tall) + Math.sin(t * 0.11) * 1.5); camLook.set(LOOKX + (tall - 1) * LOOKK, 0, bz * 0.28 * (2 - tall));
-  if (state.phase === "celebrate" && state.phaseT < 3.5) { const home = state.lastScorer === "home"; camPos.set(home ? -30 : -24, 47, camPos.z * 0.5); camLook.set((home ? -1 : 8) + (tall - 1) * LOOKK, 0, camLook.z * 0.5); }
+  let snap = false;
+  if (replay.on && replay.ball) { const b = replay.ball, d = attackDir(state.lastScorer || "home"); camPos.set(b.bx - 15, 15, b.bz - d * 6); camLook.set(b.bx + 2 + (tall - 1) * 6, 0.4, b.bz + d * 1.5); fov = CAMFOV * 0.66; snap = camera.position.x > 1e8; }
+  else if (state.phase === "celebrate" && state.phaseT < 2.4 && scorer) { camPos.set(scorer.x - 24, 34, scorer.z * 0.8); camLook.set(scorer.x + 3 + (tall - 1) * LOOKK * 0.6, 0, scorer.z * 0.9); fov = CAMFOV * 0.85; }
+  else if (state.phase === "celebrate" && camera.position.x > 1e8) snap = true;
   if (state.shake > 0) { camPos.x += (Math.random() - 0.5) * state.shake * 1.4; camPos.y += (Math.random() - 0.5) * state.shake; state.shake = Math.max(0, state.shake - dt * 1.5); }
   if (Math.abs(camera.fov - fov) > 0.01) { camera.fov = fov; camera.updateProjectionMatrix(); }
   const ik = introHold ? 0 : (state.time - introStart) / INTRO;
   if (ik < 1) { const k = ik * ik * (3 - 2 * ik); camera.position.set(lerp(-6, camPos.x, k), lerp(15, camPos.y, k), lerp(-4, camPos.z, k)); camTarget.set(lerp(70, camLook.x, k), lerp(9, 0, k), lerp(6, camLook.z, k));
     camera.up.set(k, 1 - k, 0).normalize(); camera.lookAt(camTarget); return; }
   camera.up.set(1, 0, 0);
-  camera.position.lerp(camPos, Math.min(1, dt * 1.6)); camTarget.lerp(camLook, Math.min(1, dt * 1.6)); camera.lookAt(camTarget);
+  if (snap) { camera.position.copy(camPos); camTarget.copy(camLook); }
+  const ck = Math.min(1, dt * (replay.on ? 6 : 1.6)); camera.position.lerp(camPos, ck); camTarget.lerp(camLook, ck); camera.lookAt(camTarget);
 }
+/* quality: measured fps -> auto downgrade (high -> med -> low), never flaps back up after a downgrade */
+const QUAL = { acc: 0, frames: 0, lowWin: 0, highWin: 0, downs: 0, locked: false, fps: 0 };
+function applyQuality(l, why) {
+  CONFIG.quality.level = l; window.__quality = CONFIG.quality.names[l];
+  renderer.setPixelRatio(l === 2 ? Math.min(2, window.devicePixelRatio || 1) : l === 1 ? Math.min(1.25, window.devicePixelRatio || 1) : 0.75); renderer.setSize(W, H, false);
+  setWorldQuality(l); if (why) logLine(T("qual", { q: T("qn")[l], f: Math.round(QUAL.fps) }));
+}
+function qualityMonitor(raw) {
+  if (QUAL.locked || raw > 0.2) return;            // ignore hidden-tab gaps
+  QUAL.acc += raw; QUAL.frames++;
+  if (QUAL.acc < 2) return;
+  QUAL.fps = QUAL.frames / QUAL.acc; window.__fps = Math.round(QUAL.fps * 10) / 10; QUAL.acc = 0; QUAL.frames = 0;
+  const l = CONFIG.quality.level;
+  if (QUAL.fps < CONFIG.quality.minFps) { QUAL.lowWin++; QUAL.highWin = 0; if (QUAL.lowWin >= 2 && l > 0) { QUAL.lowWin = 0; QUAL.downs++; applyQuality(l - 1, true); } }
+  else { QUAL.lowWin = 0; if (QUAL.fps > 57 && QUAL.downs === 0 && l < 2) { if (++QUAL.highWin >= 5) { QUAL.highWin = 0; applyQuality(l + 1, true); } } }
+}
+window.__qualityMonitor = qualityMonitor;
 let hudAcc = 0, fx2Acc = 0;
 function step(dt, noDraw) {
   state.time += dt;
   if (botOn) { botAcc += dt * (Number($("bot-rate").value) || 8); while (botAcc >= 1) { botAcc--; botEvent(); } }
   drumTick(); flushJoins(); flushPicks(); liveWatchdog();
-  updateMatch(dt); updatePlayers(dt, state.time); updateFans(state.time); updateFX(dt, state.time); updateCity(state.time);
+  updateMatch(dt); updatePlayers(dt, state.time, noDraw); updateWorld2(dt, state.time, noDraw); updateFans(state.time); updateFX(dt, state.time); updateCity(state.time);
   [-1, 1].forEach(s => { const n = goals[s].net; if (n.userData.shake > 0) { n.userData.shake -= dt; n.scale.z = 1 + Math.sin(state.time * 40) * 0.15 * n.userData.shake; } else n.scale.z = 1; });
   if (crowdGain && !state.muted) crowdGain.gain.value = 0.04 + (state.chant.home + state.chant.away) / 200 * 0.22 + (state.phase === "celebrate" ? 0.15 : 0);
   if (noDraw) { fx2Acc += dt; return; }
-  updateCamera(dt + fx2Acc);
-  renderer.render(scene, camera);
+  updateReplay(); updateCamera(dt + fx2Acc);
+  renderer.render(scene, camera); window.__calls = renderer.info.render.calls;
   updateLabels(); updateFX2(dt + fx2Acc); fx2Acc = 0;
   hudAcc += dt; if (hudAcc > 0.2) { hudAcc = 0; refreshHUD(); }
 }
@@ -541,14 +563,15 @@ window.__state = state; window.__users = users; window.__pending = pending; wind
 let lastT = 0;
 // slow devices: up to 0.25 s per frame is simulated in ≤50 ms logic substeps and drawn once, so a 3-minute match stays 3 minutes (no slow motion);
 // longer gaps (hidden tab) are not fast-forwarded
-function tick(now) { const raw = Math.min(0.25, (lastT ? now - lastT : 16) / 1000); lastT = now;
+function tick(now) { const rawFull = (lastT ? now - lastT : 16) / 1000, raw = Math.min(0.25, rawFull); lastT = now; qualityMonitor(rawFull);
   if (!state.paused) try { const n = Math.ceil(raw / 0.05), d = raw / n; for (let i = 0; i < n; i++) step(d, i < n - 1); } catch (e) { console.error(e); }
   requestAnimationFrame(tick); }
 function setPaused(p) { state.paused = p; $("btn-pause").textContent = p ? T("ui").resume : T("ui").pause; if (p) $("clock").textContent = "⏸ " + $("clock").textContent; }
 function toggleHelp(on) { $("help").classList.toggle("on", on === undefined ? !$("help").classList.contains("on") : on); }
 function setBot(on) { botOn = on; $("bot-toggle").checked = on; }
 function boot() {
-  buildSky(); buildPitch(); buildStands(); buildCity(); buildFans(); buildPlayers(); buildFX();
+  buildSky(); buildPitch(); buildStands(); buildCity(); buildFans(); buildPlayers(); buildFX(); buildWorld2();
+  { const qp = CONFIG.quality.names.indexOf(Q.get("q")); QUAL.locked = qp >= 0 || CLIP; applyQuality(qp >= 0 ? qp : CLIP ? 2 : IS_MOBILE ? 1 : 2); }
   TEAMS.forEach(drawCrest); if (Q.get("lang") === "en") CONFIG.lang = "en"; applyLang(); fit();
   camera.up.set(1, 0, 0); camera.position.set(CAMX, CAMY, 0); camTarget.set(LOOKX, 0, 0); camera.lookAt(camTarget);
   const who = () => { const n = $("fake-user").value.trim() || "pablo"; return { userId: "local:" + n.toLowerCase(), username: n }; };

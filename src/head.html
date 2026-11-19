@@ -116,6 +116,12 @@ body.mobile #stage, body.clip #stage { border-radius: 0; box-shadow: none; }
 @keyframes pulse { 50% { box-shadow: 0 0 28px rgba(255,210,58,.9); } }
 #help { position: absolute; inset: 60px 30px auto; z-index: 12; display: none; background: rgba(8,12,22,.95); border: 2px solid #ffd75e; border-radius: 16px; padding: 14px 16px; font-size: 14px; line-height: 1.55; cursor: pointer; }
 #help.on { display: block; }
+#replay { position: absolute; inset: 0; z-index: 4; pointer-events: none; display: none; }
+#replay.on { display: block; }
+body.rp #celebrate, body.rp #toast { opacity: 0 !important; }
+#replay i { position: absolute; left: 0; right: 0; top: 0; height: 9%; background: #000; }
+#replay i.bt { top: auto; bottom: 0; }
+#replay b { position: absolute; left: 16px; top: calc(9% + 12px); font-size: 17px; font-weight: 900; letter-spacing: 1px; background: #e01b2f; padding: 5px 10px; border-radius: 6px; animation: pulse 1s infinite; }
 #help h3 { margin: 0 0 6px; color: #ffd75e; font-size: 15px; letter-spacing: 1px; }
 #help b { display: inline-block; min-width: 150px; color: #9fd0ff; font-family: monospace; }
 #help .c { margin-top: 8px; opacity: .6; font-size: 12px; }
@@ -218,6 +224,7 @@ body.mobile #test-panel { position: fixed; right: 8px; bottom: 8px; z-index: 20;
     <button class="ibtn" id="panel-btn" title="Test panel (H)">⚙️</button>
     <div id="start"><div class="t"><span data-i="title" data-html="1">İNÖNÜ<br>TRİBÜN SAVAŞI</span><small data-i="startSub">Tribün tezahürat savaşı · TikTok LIVE</small></div><button type="button" class="b" id="playbtn" data-i="play">▶ OYNA</button><div style="font-size:12px;opacity:.8" data-i="soundOn">sesi aç 🔊</div></div>
     <div id="help" role="dialog"></div>
+    <div id="replay"><i></i><b id="replay-t">⏪ TEKRAR</b><i class="bt"></i></div>
   </div></div>
   <div id="test-panel">
     <h3><span data-i="panelTitle">TEST PANELİ</span> <span style="opacity:.5" data-i="panelHide">(H gizle)</span></h3>
