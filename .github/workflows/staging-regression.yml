@@ -38,6 +38,7 @@ jobs:
           python3 -m http.server 8768 --bind 127.0.0.1 >/tmp/inonu-staging-http.log 2>&1 &
           sleep 2
           timeout 150s node tests/staging-browser.mjs
+          timeout 120s node tests/natural-soak-browser.mjs
           timeout 230s node tests/match-cycle-browser.mjs
       - name: Upload screenshots for review (even if browser checks fail)
         if: always()
