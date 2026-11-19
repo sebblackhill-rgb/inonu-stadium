@@ -32,9 +32,12 @@ try {
      s.mode=mode;
      const noHostCredit=!s.users.has('qa-test-live');
      s.mode='live';s.conn.st='down';
-     renderWaiting();renderBoard();
+     // Inspect the empty-crew waiting card without discarding the test participants.
+     const savedUsers=s.users;s.users=new Map();
+     renderWaiting();
      const outageLabel=document.getElementById('wait-t').textContent;
      const outageCorrect=/CONNECTION UNAVAILABLE/.test(outageLabel);
+     s.users=savedUsers;renderBoard();
      const publicBoardExcludesTest=!document.getElementById('board').textContent.includes('QA Gift');
      s.mode=mode;s.conn.st='off';renderWaiting();renderBoard();
      const gaps=window.__conservation();
