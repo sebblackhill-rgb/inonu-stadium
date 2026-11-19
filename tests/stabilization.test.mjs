@@ -32,7 +32,7 @@ test('invalid gifts and likes rejected before credit and event ID dedupe',()=>{
  assert.equal(seen.size,0);assert.equal(state.users.size,0);assert.equal(c.LEDGER.bySrc.live,0);
 });
 test('phase clock tracks wall time at five frames per second',()=>{
- const c=context(section('function wallElapsed(now, previous) {','function tick(now) {'),{state:{time:0,paused:false}});
+ const c=context(section('function wallElapsed(now, previous) {','function tick(now) {'),{state:{time:0,paused:false},lastT:1000});
  let prev=1000;
  for(let i=0;i<25;i++){prev+=200;c.advanceClock(prev)}
  assert(Math.abs(c.state.time-5)<0.25,'state time '+c.state.time);
