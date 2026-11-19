@@ -46,6 +46,7 @@ jobs:
           sleep 2
           timeout 180s node tests/browser-smoke.mjs
           timeout 180s node tests/match-cycle-browser.mjs
+          timeout 150s node tests/natural-soak-browser.mjs
       - name: Upload screenshot evidence
         if: always()
         uses: actions/upload-artifact@v4
