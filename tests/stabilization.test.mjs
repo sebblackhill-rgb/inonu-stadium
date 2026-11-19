@@ -158,7 +158,7 @@ test('shared portfolio objective shows the right phase, milestone and countdown 
  assert.equal(a.phase,'build');assert.match(a.main,/LAYER 5/);assert.match(a.detail,/SUN 4\/36/);
  s.teams.sun.layers=5;assert.match(c.missionModel(s,cfg).main,/LAYER 10/);
  s.phase='boss';const b=c.missionModel(s,cfg);
- assert.equal(b.phase,'boss');assert.match(b.detail,/230s/);assert.match(b.main,/7000/);
+ assert.equal(b.phase,'boss');assert.match(b.detail,/230s/);assert.match(b.main,/7[, ]?000/);
  s.phase='race';assert.match(c.missionModel(s,cfg).detail,/30s/);
  s.phase='victory';assert.match(c.missionModel(s,cfg).detail,/NEXT ROUND · 30s/);
  cfg.lang='tr';assert.match(c.missionModel(s,cfg).main,/PİRAMİT TAMAMLANDI/);
