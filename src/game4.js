@@ -125,7 +125,7 @@ function doAction(f, kind) {
     if (cool) return;
     addChant(other(team), -4);                                   // distracts the celebrating rivals...
     const arr = state.throws[team]; arr.push(state.time); while (arr.length && state.time - arr[0] > R.window) arr.shift();
-    if (arr.length >= R.limit) { arr.length = 0; state.offence[team]++; state.coolUntil[team] = state.time + 1 + R.cooldown; const lvl = state.offence[team]; later(1.0, () => refereeWarning(team, lvl)); }   // ...but the ref is watching (explained ladder)
+    if (arr.length >= R.limit) { arr.length = 0; state.offence[team]++; state.coolUntil[team] = state.time + 1 + R.cooldown; const lvl = state.offence[team], generation = state.warningGeneration || 0; later(1.0, () => { if (generation === (state.warningGeneration || 0)) refereeWarning(team, lvl); }); }   // ...but the ref is watching (explained ladder)
     else if (arr.length === R.limit - 1) watchCue(team);
   }
 }
@@ -327,11 +327,9 @@ function goal(team) {
   confetti(team);
 }
 function topFans(list, key, n) { return list.filter(f => f[key] > 0).sort((a, b) => b[key] - a[key]).slice(0, n); }
-function fullTime() {
-  state.phase = "ft"; state.phaseT = 0; sfx("whistle", 3); later(0.6, () => sfx("fanfare"));
+function renderFullTimePanel() {
+  // Pure UI redraw: language switches must never award a second series result.
   const h = state.goals.home, a = state.goals.away, w = h === a ? null : (h > a ? "home" : "away");
-  bumpSeries(w || "draw"); persist();
-  if (w) { teamFans[w].forEach(f => f.jumpUntil = state.time + 10); teamFans[other(w)].forEach(f => f.sadUntil = state.time + 8); confetti(w); later(2, () => confetti(w)); }
   const all = teamFans.home.concat(teamFans.away);
   const motm = topFans(w ? teamFans[w] : all, "mPts", 1)[0], top = topFans(all, "mPts", 3);
   const esc = s => String(s).replace(/[<>&"]/g, "");
@@ -344,9 +342,17 @@ function fullTime() {
     "<div class='nx' id='ft-next'></div>";
   TEAMS.forEach(t => { const c = $("ftc-" + t); if (c) c.getContext("2d").drawImage($("crest-" + t), 0, 0); });
   P.style.display = "block";
+}
+function fullTime() {
+  state.phase = "ft"; state.phaseT = 0; sfx("whistle", 3); later(0.6, () => sfx("fanfare"));
+  const h = state.goals.home, a = state.goals.away, w = h === a ? null : (h > a ? "home" : "away");
+  bumpSeries(w || "draw"); persist();
+  if (w) { teamFans[w].forEach(f => f.jumpUntil = state.time + 10); teamFans[other(w)].forEach(f => f.sadUntil = state.time + 8); confetti(w); later(2, () => confetti(w)); }
+  renderFullTimePanel();
   showPop(T("ft"), "", w || "", 1.6, "small", 4);
 }
 function newMatch(restart) {
+  state.warningGeneration = (state.warningGeneration || 0) + 1;
   state.goals.home = state.goals.away = 0; state.minute = 0; state.phaseT = 0; if (!restart) state.matchNo++;
   state.penQ.length = 0; state.pen = null; ballFly = null; state.lastShot = null;
   TEAMS.forEach(t => { state.chant[t] = 10; state.throws[t].length = 0; state.offence[t] = 0; state.warnings[t] = 0; state.banUntil[t] = -1; state.coolUntil[t] = -1; });
@@ -475,6 +481,7 @@ function applyLang() {
   $("deskhint").textContent = T("deskHint");
   $("celebrate").dataset.team = ""; $("replay-t").textContent = T("replay"); if (WX.scoreCanvas) drawScoreboard(true);
   if (liveState) setLive(liveState);
+  if (state.phase === "ft") renderFullTimePanel();
 }
 function drawCrest(t) {
   const g = $("crest-" + t).getContext("2d"), C = CONFIG.teams[t];
@@ -727,14 +734,14 @@ function boot() {
   $("btn-restart").onclick = () => { newMatch(true); };
   $("help").onclick = () => toggleHelp(false);
   if (Q.get("help") === "1") toggleHelp(true);
-  $("btn-reset").onclick = () => { resetStore(); users.forEach(f => f.nPts = 0); refreshHUD(); };
+  $("btn-reset").onclick = () => { if (!window.confirm(CONFIG.lang === "tr" ? "Seri ve gece puanları silinsin mi?" : "Clear the series and tonight’s supporter scores?")) return; resetStore(); users.forEach(f => f.nPts = 0); refreshHUD(); };
   $("btn-newuser").onclick = () => { $("fake-user").value = "izleyici_" + Math.floor(Math.random() * 9000 + 1000); };
   $("panel-btn").onclick = (e) => { e.stopPropagation(); document.body.classList.toggle("panel-hidden"); fit(); };
   window.addEventListener("keydown", e => { if (/input|textarea/i.test(e.target.tagName)) return; const k = e.key.toLowerCase();
     if (k === "h") { document.body.classList.toggle("panel-hidden"); fit(); } else if (k === "m") { if (!state.muted && audioState() !== "running") setMuted(false); else setMuted(!state.muted); }
     else if (k === "l") { CONFIG.lang = CONFIG.lang === "tr" ? "en" : "tr"; applyLang(); refreshHUD(); } else if (k === "p") setPaused(!state.paused); else if (e.key === "?" || k === "/") toggleHelp(); });
   window.addEventListener("resize", fit);
-  if (IS_MOBILE || window.innerWidth < 860) { document.body.classList.add("panel-hidden"); fit(); }
+  if (IS_MOBILE || window.innerWidth < 860 || Q.get("live") === "1") { document.body.classList.add("panel-hidden"); fit(); }
   if (Q.get("panel") === "0") { document.body.classList.add("panel-hidden"); fit(); }
   $("mute").style.display = "flex";
   if (!CLIP && Q.get("live") !== "1" && Q.get("bot") !== "1" && Q.get("demo") !== "0") {
