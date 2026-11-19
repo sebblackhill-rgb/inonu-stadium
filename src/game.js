@@ -41,7 +41,8 @@ const CONFIG = {
   streakMemoryMs: 300000, // settled streaks are remembered this long; a later final for the same streak only credits its increase (see ledger.js)
   streakMemoryMax: 5000,  // bound on remembered streaks
   eventIdMemory: 20000,   // LRU of processed event ids (kept across connector reconnects) to drop replays
-  maxParticipants: 20000, // ledger hard cap (every viewer is credited; only maxWorkers get a visible avatar)
+  maxParticipants: 20000, // normal participant cap; extra gifted viewers remain recognisable
+  giftOverflowReserve: 2000, // protected credit-only users above the normal 20k limit
   calmEffects: false,     // fewer flashes / no shake (also ?calm=1 or the host panel)
   bossDamage: { chat: 6, like: 2, diamond: 8, lion: 4000 },
   maxWorkers: 360,        // visible avatars; extra viewers still count and are shown as "+N cheering"
@@ -615,10 +616,27 @@ function makeUser(id, name, team, photoUrl) {
     spawned: false, bubble: "", bubbleUntil: 0, scale: 0.92 + ((h >> 7) % 17) / 100
   };
 }
-function getOrMakeUser(userId, username, photoUrl, src) {
+function getOrMakeUser(userId, username, photoUrl, src, preserveGiftCredit = false) {
   let u = state.users.get(userId);
   if (!u) {
-    if (state.users.size >= CONFIG.maxParticipants) return null;
+    if (state.users.size >= CONFIG.maxParticipants) {
+      // Free, empty, unassigned records may be discarded to welcome new people.
+      // Never evict someone who chose a team or has pending likes/gift credit.
+      let removed = 0;
+      for (const [key, rec] of state.users) {
+        if (state.users.size < CONFIG.maxParticipants || removed >= 64) break;
+        if (!rec.team && !rec.diamonds && (!rec.pending || rec.pending.length === 0)
+          && performance.now() - (rec.lastActive || 0) > 60000) {
+          state.users.delete(key); removed++;
+        }
+      }
+    }
+    if (state.users.size >= CONFIG.maxParticipants) {
+      // A new giver must not lose recognition because 20,000 people already joined.
+      // The 2,000 reserve supports credit without adding another on-screen avatar.
+      if (!preserveGiftCredit || state.users.size >= CONFIG.maxParticipants + CONFIG.giftOverflowReserve)
+        return null;
+    }
     u = makeUser(userId, username, null, photoUrl); u.src = src;
     state.users.set(userId, u);
   }
@@ -924,8 +942,11 @@ function settleStreak(rec) {
 }
 function processGift(userId, evt, repeats, base) {
   const g = resolveGift(Object.assign({}, evt, { repeatCount: repeats }));
-  const u = getOrMakeUser(userId, base.user, evt.photoUrl, base.src);
-  if (!u) return diag(Object.assign(base, { outcome: "rejected", reason: "participant ledger full" }));
+  const u = getOrMakeUser(userId, base.user, evt.photoUrl, base.src, true);
+  if (!u) {
+    log("gift", "Gift could not be credited: supporter reserve full; please alert the host.");
+    return diag(Object.assign(base, { outcome: "rejected", reason: "gift recognition reserve full" }));
+  }
   const act = { type: "gift", g, src: base.src, eid: base.eid };
   if (!u.team) {
     holdPending(u, act);
