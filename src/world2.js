@@ -46,14 +46,15 @@ function buildWorld2() {
   WX.scoreTex = new THREE.CanvasTexture(WX.scoreCanvas); WX.scoreTex.encoding = THREE.sRGBEncoding;
   const scr = new THREE.Group(); const panel = new THREE.Mesh(new THREE.PlaneGeometry(9, 2.8), new THREE.MeshBasicMaterial({ map: WX.scoreTex })); scr.add(panel);
   box(9.4, 3.2, 0.3, dark, 0, 0, -0.2, scr); box(0.3, 6, 0.3, steel, -3, -3.8, -0.3, scr); box(0.3, 6, 0.3, steel, 3, -3.8, -0.3, scr);
-  scr.position.set(SX0 + ROWS * RD + 1.5, ROWS * RH + 9, PL - 4); scr.lookAt(-34, 60, PL - 4); scene.add(scr); WX.screen = scr; drawScoreboard(true);
+  // B1 (pass 3): mounted over the middle of the far stand, clear of the HUD cluster at the kickoff sweep, in play and at full time (desktop, ?mobile=1, phones; see test B1)
+  scr.position.set(21, 9.3, 4.5); scr.lookAt(-34, 60, 4.5); scene.add(scr); WX.screen = scr; WX.screenPanel = panel; drawScoreboard(true);
   // --- dugouts on the home touchline + substitutes ---
   const subsB = new THREE.InstancedMesh(new THREE.BoxGeometry(0.5, 0.7, 0.4), lam(0xffffff), 16), subsH = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.2, 0), lam(0xffffff), 16); let si = 0;
   const M = new THREE.Matrix4();
   [-6.5, 6.5].forEach((z, k) => { const g = new THREE.Group(); g.position.set(-(PW + 0.75), 0, z); scene.add(g);
     box(0.9, 0.12, 4.2, steel, 0, 1.15, 0, g); box(0.1, 1.15, 4.2, dark, -0.45, 0.58, 0, g); box(0.9, 1.15, 0.08, glassMat, 0, 0.58, 2.1, g); box(0.9, 1.15, 0.08, glassMat, 0, 0.58, -2.1, g);
     const roof = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.06, 4.3), glassMat); roof.position.set(0, 1.22, 0); g.add(roof);
-    for (let i = 0; i < 7; i++) { const zz = z - 1.7 + i * 0.56; M.makeTranslation(-(PW + 0.95), 0.55, zz); subsB.setMatrixAt(si, M); subsB.setColorAt(si, new THREE.Color(k ? (i % 2 ? 0xb5121b : 0xffcc22) : (i % 2 ? 0x111111 : 0xeeeeee)));
+    for (let i = 0; i < 7; i++) { const zz = z - 1.7 + i * 0.56; M.makeTranslation(-(PW + 0.95), 0.55, zz); subsB.setMatrixAt(si, M); subsB.setColorAt(si, new THREE.Color(k ? (i % 2 ? AC.n1 : AC.n2) : (i % 2 ? 0x111111 : 0xeeeeee)));
       M.makeTranslation(-(PW + 0.95), 1.02, zz); subsH.setMatrixAt(si, M); subsH.setColorAt(si, new THREE.Color(SKIN[i % SKIN.length])); si++; }
     M.makeTranslation(-(PW + 0.25), 0.95, z + 2.5); subsB.setMatrixAt(si, M.multiply(new THREE.Matrix4().makeScale(1, 1.4, 1))); subsB.setColorAt(si, new THREE.Color(0x22252e)); M.makeTranslation(-(PW + 0.25), 1.6, z + 2.5); subsH.setMatrixAt(si, M); subsH.setColorAt(si, new THREE.Color(SKIN[2])); si++;   // coach
   });
@@ -71,7 +72,7 @@ function buildWorld2() {
   // --- big waving flags ---
   const flagTex = (kind) => canvasTex(128, 80, (g, w, h) => {
     if (kind === "home") { for (let i = 0; i < 8; i++) { g.fillStyle = i % 2 ? "#fff" : "#111"; g.fillRect(i * 16, 0, 16, h); } g.fillStyle = "#ffd75e"; g.font = "900 44px serif"; g.textAlign = "center"; g.fillText("★", 64, 56); }
-    else if (kind === "away") { g.fillStyle = "#b5121b"; g.fillRect(0, 0, w, h); g.fillStyle = "#ffcc22"; g.fillRect(0, 28, w, 24); }
+    else if (kind === "away") { g.fillStyle = AC.c1; g.fillRect(0, 0, w, h); g.fillStyle = AC.c2; g.fillRect(0, 28, w, 24); }
     else { g.fillStyle = "#111"; g.fillRect(0, 0, w, h); g.fillStyle = "#fff"; g.font = "900 22px Trebuchet MS"; g.textAlign = "center"; g.fillText("İSTANBUL", 64, 48); } });
   const spots = [["home", -(SX0 + 6.8 * RD), 7.6, -12], ["home", -(SX0 + 6.8 * RD), 7.6, 0], ["home", -(SX0 + 6.8 * RD), 7.6, 12], ["away", SX0 + 6.8 * RD, 7.6, -10], ["away", SX0 + 6.8 * RD, 7.6, 8],
                  ["city", 0, 9.5, -(PL + 15)], ["home", -12, 9.5, PL + 15], ["home", 12, 9.5, -(PL + 15)]];
@@ -106,7 +107,7 @@ function drawScoreboard(force) {
   const g = WX.scoreCanvas.getContext("2d"), w = 512, h = 160;
   g.fillStyle = "#03050a"; g.fillRect(0, 0, w, h);
   g.fillStyle = "#111"; g.fillRect(0, 0, w / 2, 44); g.fillStyle = "#a50f1c"; g.fillRect(w / 2, 0, w / 2, 44);
-  g.font = "900 30px Trebuchet MS"; g.textAlign = "center"; g.fillStyle = "#fff"; g.fillText(tName("home"), w / 4, 33); g.fillStyle = "#ffcc22"; g.fillText(tName("away"), 3 * w / 4, 33);
+  g.font = "900 30px Trebuchet MS"; g.textAlign = "center"; g.fillStyle = "#fff"; g.fillText(tName("home"), w / 4, 33); g.fillStyle = AC.hi; g.fillText(tName("away"), 3 * w / 4, 33);
   g.font = "900 86px Trebuchet MS"; g.fillStyle = state.phase === "celebrate" ? "#ffd75e" : "#fff"; g.fillText(state.goals.home + " - " + state.goals.away, w / 2, 128);
   g.font = "900 26px Trebuchet MS"; g.fillStyle = "#7fe08a"; g.textAlign = "left"; g.fillText(state.phase === "ft" ? T("ft") : Math.floor(state.minute) + "'", 14, 150);
   g.fillStyle = "rgba(0,0,0,.3)"; for (let y = 0; y < h; y += 3) g.fillRect(0, y, w, 1);
@@ -127,7 +128,7 @@ function updateWorld2(dt, t, noDraw) {
   wxFrame++; const Q = CONFIG.quality.level;
   WX.led.offset.x = (t * 0.04) % 1; WX.ledGoal.offset.x = (t * 0.12) % 1;
   WX.ledMat.map = state.phase === "celebrate" && state.phaseT < 5 ? WX.ledGoal : WX.led;
-  drawScoreboard();
+  drawScoreboard(); WX.screenPanel.material.color.setScalar(state.phase === "ft" ? 0.28 : 1);   // dimmed under the full-time ceremony
   WX.corner.forEach((f, i) => { f.rotation.y = Math.sin(t * 3 + i) * 0.5 + 0.4; });
   if (Q >= 1 || wxFrame % 4 === 0) WX.flags.forEach(F => { if (Q === 0 && wxFrame > 4) return; const a = F.m.geometry.attributes.position, b = F.base; for (let i = 0; i < a.count; i++) { const x = b[i * 3]; a.array[i * 3 + 2] = Math.sin(t * 5 + x * 1.6 + F.ph) * 0.18 * x; a.array[i * 3 + 1] = b[i * 3 + 1] + Math.sin(t * 4 + x * 2 + F.ph) * 0.05 * x; } a.needsUpdate = true; });
   // ambient crowd

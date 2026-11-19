@@ -32,7 +32,7 @@ body.mobile #stage, body.clip #stage { border-radius: 0; box-shadow: none; }
 .lab { position: absolute; left: 0; top: 0; padding: 1px 5px 2px; border-radius: 6px; font-size: 9.5px; font-weight: 800; white-space: nowrap;
   max-width: 100px; overflow: hidden; text-overflow: ellipsis; background: rgba(10,10,14,.82); color: #fff; text-shadow: 0 1px 1px #000; will-change: transform; }
 .lab.home { box-shadow: inset 0 -2px 0 #f2f2f2; }
-.lab.away { box-shadow: inset 0 -2px 0 #ffcc22; background: rgba(110,8,20,.88); }
+.lab.away { box-shadow: inset 0 -2px 0 var(--ahi, #ffcc22); background: var(--adark, #6e0814); }
 .lab.hot { font-size: 12px; padding: 2px 7px 3px; border: 1.5px solid #fff; z-index: 2; }
 .lab.amigo { background: linear-gradient(180deg,#fff3b0,#e3a826); color: #2a1600; text-shadow: none; font-size: 11px; border: 1px solid #fff7cf; }
 .lab .say { display: block; font-size: 9px; font-weight: 700; color: #ffe27a; max-width: 96px; overflow: hidden; text-overflow: ellipsis; }
@@ -42,7 +42,7 @@ body.mobile #stage, body.clip #stage { border-radius: 0; box-shadow: none; }
   background: linear-gradient(180deg, #1b1f2b, #0b0d13); border: 2px solid #3a4152; box-shadow: 0 8px 22px rgba(0,0,0,.55); }
 #score .side { flex: 1; display: flex; align-items: center; gap: 7px; padding: 0 8px; }
 #score .side.home { background: linear-gradient(90deg, #000 0%, #2a2a2a 100%); }
-#score .side.away { background: linear-gradient(270deg, #8f0b1c 0%, #4d0510 100%); flex-direction: row-reverse; text-align: right; }
+#score .side.away { background: linear-gradient(270deg, var(--amid, #8f0b1c) 0%, var(--adark, #4d0510) 100%); flex-direction: row-reverse; text-align: right; }
 #score .crest { width: 40px; height: 46px; flex: 0 0 auto; }
 #score .tname { font-weight: 900; font-size: 15px; letter-spacing: .5px; line-height: 1.05; }
 #score .tname small { display: block; font-size: 10px; font-weight: 700; opacity: .8; letter-spacing: 0; }
@@ -57,21 +57,21 @@ body.mobile #stage, body.clip #stage { border-radius: 0; box-shadow: none; }
 .meter { flex: 1; height: 26px; border-radius: 13px; background: rgba(0,0,0,.6); border: 2px solid rgba(255,255,255,.25); position: relative; overflow: hidden; }
 .meter .fill { position: absolute; top: 0; bottom: 0; width: 0%; }
 .meter.home .fill { left: 0; background: repeating-linear-gradient(90deg,#fff 0 8px,#d9d9d9 8px 10px,#111 10px 18px,#333 18px 20px); }
-.meter.away .fill { right: 0; background: linear-gradient(90deg,#ffcf2a,#e01b2f); }
+.meter.away .fill { right: 0; background: linear-gradient(90deg, var(--a2, #ffcf2a), var(--a1, #e01b2f)); }
 .meter .lbl { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 900; text-shadow: 0 0 3px #000, 0 0 6px #000; }
 #mom { width: 64px; flex: 0 0 auto; text-align: center; font-size: 9px; font-weight: 900; color: #ffd75e; line-height: 1.1; }
-#mom .bar { margin-top: 3px; height: 8px; border-radius: 4px; background: linear-gradient(90deg,#fff,#555 50%,#e01b2f); position: relative; }
+#mom .bar { margin-top: 3px; height: 8px; border-radius: 4px; background: linear-gradient(90deg,#fff,#555 50%, var(--a1, #e01b2f)); position: relative; }
 #mom .knob { position: absolute; top: -4px; width: 16px; height: 16px; margin-left: -8px; left: 50%; border-radius: 50%; background: #ffd75e; border: 2px solid #000; box-shadow: 0 0 8px #ffd75e; }
 
 /* side panels */
 #log { position: absolute; left: 8px; top: 118px; width: 210px; display: flex; flex-direction: column; gap: 3px; }
 #log div { font-size: 10.5px; font-weight: 800; background: rgba(0,0,0,.58); padding: 3px 7px; border-radius: 8px; border-left: 3px solid #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#log div.away { border-left-color: #ffcc22; }
+#log div.away { border-left-color: var(--ahi, #ffcc22); }
 #board { position: absolute; right: 8px; top: 118px; width: 150px; background: rgba(0,0,0,.6); border-radius: 10px; padding: 5px 7px; border: 1px solid rgba(255,215,94,.5); }
 #board h4 { margin: 0 0 3px; font-size: 10px; color: #ffd75e; letter-spacing: 1px; text-align: center; }
 #board .row { display: flex; justify-content: space-between; font-size: 10px; font-weight: 800; padding: 1px 0; gap: 5px; }
 #board .row span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#board .row.away span:first-child { color: #ffcf55; }
+#board .row.away span:first-child { color: var(--alight, #ffcf55); }
 
 /* how to join legend */
 #legend { position: absolute; left: 8px; right: 8px; bottom: 8px; border-radius: 12px; padding: 5px 6px 5px;
@@ -80,7 +80,7 @@ body.mobile #stage, body.clip #stage { border-radius: 0; box-shadow: none; }
 #legend .join div { flex: 1; text-align: center; font-weight: 900; font-size: 13px; padding: 2px 4px 3px; border-radius: 9px; line-height: 1.05; }
 #legend .join div small { display: block; font-size: 9px; font-weight: 700; opacity: .85; }
 #legend .join .h { background: repeating-linear-gradient(90deg,#111 0 14px,#2b2b2b 14px 28px); border: 2px solid #fff; }
-#legend .join .a { background: linear-gradient(90deg,#a70d20,#d22a1e); border: 2px solid #ffcc22; }
+#legend .join .a { background: linear-gradient(90deg, var(--adark, #a70d20), var(--amid, #d22a1e)); border: 2px solid var(--ahi, #ffcc22); }
 #legend .join b { font-size: 19px; color: #ffd75e; text-shadow: 0 2px 0 #000; }
 #legend .acts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
 #legend .acts div { text-align: center; background: rgba(255,255,255,.07); border-radius: 7px; padding: 2px 2px; font-size: 9.5px; font-weight: 800; line-height: 1.1; }
@@ -92,14 +92,14 @@ body.mobile #stage, body.clip #stage { border-radius: 0; box-shadow: none; }
 #pop .big { font-size: 74px; font-weight: 900; letter-spacing: 2px; line-height: 1; color: #fff;
   -webkit-text-stroke: 3px #000; text-shadow: 0 6px 0 #000, 0 0 30px rgba(255,220,80,.9); font-style: italic; }
 #pop .sub { margin-top: 8px; display: inline-block; max-width: 500px; white-space: normal; line-height: 1.25; font-size: 18px; font-weight: 900; padding: 5px 14px; border-radius: 12px; background: rgba(0,0,0,.72); border: 2px solid #ffd75e; }
-#pop.away .big { color: #ffd23a; }
+#pop.away .big { color: var(--ahi, #ffd23a); }
 #pop.warn .big { color: #ffe23a; font-size: 50px; }
 #pop.small .big { font-size: 44px; }
 #toast { position: absolute; left: 50%; top: 250px; transform: translateX(-50%); white-space: nowrap; font-size: 14px; font-weight: 900; padding: 6px 14px;
   border-radius: 20px; background: rgba(0,0,0,.75); border: 2px solid #fff; opacity: 0; }
 #celebrate { position: absolute; left: 12px; right: 12px; top: 470px; text-align: center; opacity: 0; }
 #celebrate div { display: inline-block; font-size: 15px; font-weight: 900; padding: 6px 12px; border-radius: 12px; margin: 3px; background: rgba(0,0,0,.78); border: 2px solid #fff; }
-#celebrate div.a { border-color: #ffcc22; }
+#celebrate div.a { border-color: var(--ahi, #ffcc22); }
 #card { position: absolute; right: 20px; top: 210px; width: 46px; height: 62px; border-radius: 6px; background: #ffd400; border: 2px solid #000; opacity: 0; box-shadow: 0 6px 18px rgba(0,0,0,.6); }
 
 
@@ -116,6 +116,9 @@ body.mobile #stage, body.clip #stage { border-radius: 0; box-shadow: none; }
 @keyframes pulse { 50% { box-shadow: 0 0 28px rgba(255,210,58,.9); } }
 #help { position: absolute; inset: 60px 30px auto; z-index: 12; display: none; background: rgba(8,12,22,.95); border: 2px solid #ffd75e; border-radius: 16px; padding: 14px 16px; font-size: 14px; line-height: 1.55; cursor: pointer; }
 #help.on { display: block; }
+#deskhint { position: fixed; left: 18px; bottom: 16px; font-size: 13px; font-weight: 700; letter-spacing: .5px; color: #fff; opacity: .5; display: none; pointer-events: none; }
+body.wide #deskhint { display: block; }
+#ftpanel .top.quiet { color: #ffd75e; font-weight: 900; font-size: 13px; }
 #replay { position: absolute; inset: 0; z-index: 4; pointer-events: none; display: none; }
 #replay.on { display: block; }
 body.rp #celebrate, body.rp #toast { opacity: 0 !important; }
@@ -133,7 +136,7 @@ button.b:focus-visible { outline: 4px solid #ffd75e; outline-offset: 4px; }
 .meter .lbl b { color: #6cff8f; margin-left: 6px; }
 #attack { position: absolute; left: 50%; top: 340px; transform: translateX(-50%); white-space: nowrap; font-size: 13px; font-weight: 900; padding: 4px 12px; border-radius: 12px;
   background: rgba(0,0,0,.72); border: 2px solid #fff; opacity: 0; }
-#attack.away { border-color: #ffcc22; color: #ffe27a; }
+#attack.away { border-color: var(--ahi, #ffcc22); color: var(--alight, #ffe27a); }
 #risk { position: absolute; left: 8px; top: 242px; width: 200px; display: flex; flex-direction: column; gap: 3px; }
 #risk div { font-size: 9.5px; font-weight: 900; padding: 3px 6px; border-radius: 8px; background: rgba(0,0,0,.62); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #risk div.hot { background: #7a5a00; } #risk div.ban { background: #7a0b12; }
@@ -185,6 +188,7 @@ body.mobile #test-panel { position: fixed; right: 8px; bottom: 8px; z-index: 20;
 </style>
 </head>
 <body>
+<div id="deskhint"></div>
 <div id="app">
   <div id="stage-sizer"><div id="stage">
     <canvas id="c"></canvas>
@@ -194,7 +198,7 @@ body.mobile #test-panel { position: fixed; right: 8px; bottom: 8px; z-index: 20;
       <div id="score">
         <div class="side home"><canvas class="crest" id="crest-home" width="80" height="92"></canvas><div class="tname" id="name-home">KARTALLAR<small id="cnt-home">0 taraftar</small></div></div>
         <div class="mid"><div class="goals" id="goals">0 - 0</div><div class="clock" id="clock">0'</div></div>
-        <div class="side away"><canvas class="crest" id="crest-away" width="80" height="92"></canvas><div class="tname" id="name-away">MİSAFİR<small id="cnt-away">0 taraftar</small></div></div>
+        <div class="side away"><canvas class="crest" id="crest-away" width="80" height="92"></canvas><div class="tname" id="name-away">DEPLASMAN<small id="cnt-away">0 taraftar</small></div></div>
       </div>
       <div id="series"><span class="venue2" id="venue">İNÖNÜ STADI · İSTANBUL</span><span class="chip" id="serieschip">SERİ 0-0</span></div>
       <div id="meters">
@@ -213,7 +217,7 @@ body.mobile #test-panel { position: fixed; right: 8px; bottom: 8px; z-index: 20;
       <div id="legend">
         <div class="join">
           <div class="h"><b>1</b> <span id="lg-home">yaz → EV SAHİBİ</span><small id="lg-home2">⚫⚪ siyah-beyaz</small></div>
-          <div class="a"><b>2</b> <span id="lg-away">yaz → DEPLASMAN</span><small id="lg-away2">Type 2 = AWAY 🔴🟡</small></div>
+          <div class="a"><b>2</b> <span id="lg-away">yaz → DEPLASMAN</span><small id="lg-away2"></small></div>
         </div>
         <div class="acts" id="acts"></div>
         <div class="rule" id="rule"></div>

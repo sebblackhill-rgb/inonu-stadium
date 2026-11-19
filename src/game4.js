@@ -41,13 +41,27 @@ const pending = new Map();         // unassigned viewers: userId -> {name, likes
 // the night board is merged (max points per viewer), and other instances' writes are picked up via the storage event — nobody overwrites anybody
 const readSeries = () => { try { return Object.assign({ home: 0, away: 0, draw: 0 }, JSON.parse(localStorage.getItem("inonu-series") || "null") || {}); } catch (e) { return { home: 0, away: 0, draw: 0 }; } };
 Object.assign(state.series, readSeries());
-function bumpSeries(k) { const s = readSeries(); s[k]++; try { localStorage.setItem("inonu-series", JSON.stringify(s)); } catch (e) {} state.series = s; }
-function resetStore() { state.series = { home: 0, away: 0, draw: 0 }; nightBook.clear(); try { localStorage.setItem("inonu-series", JSON.stringify(state.series)); localStorage.setItem("inonu-night", JSON.stringify({ at: Date.now(), rows: [] })); } catch (e) {} }
+// B3 (pass 3): ONE writer per browser. ?write=0 (preview tab) never writes; otherwise the first open tab holds a heartbeat lock and only it writes
+// the series / night board. Other tabs just show what the writer saved. If the writer closes, the next tab takes over within ~5 s (stale lock: 75 s).
+const WRITE = Q.get("write") !== "0", TAB_ID = Math.random().toString(36).slice(2) + Date.now().toString(36), LOCK_KEY = "inonu-writer", LOCK_TTL = 75000;
+const readLock = () => { try { return JSON.parse(localStorage.getItem(LOCK_KEY) || "null"); } catch (e) { return null; } };
+let wasWriter = null;
+function claimWriter() {
+  let mine = false;
+  if (WRITE) { const l = readLock(), now = Date.now(); if (!l || l.id === TAB_ID || now - l.at > LOCK_TTL) { try { localStorage.setItem(LOCK_KEY, JSON.stringify({ id: TAB_ID, at: now })); } catch (e) {} } mine = (readLock() || {}).id === TAB_ID; }
+  if (mine !== wasWriter) { wasWriter = mine; window.__writer = mine; if (!mine && typeof logLine === "function" && $("log")) logLine(T("preview")); }
+  return mine;
+}
+setInterval(claimWriter, 5000);
+window.addEventListener("pagehide", () => { const l = readLock(); if (l && l.id === TAB_ID) try { localStorage.removeItem(LOCK_KEY); } catch (e) {} });
+window.__isWriter = () => WRITE && (readLock() || {}).id === TAB_ID;
+function bumpSeries(k) { if (!claimWriter()) { state.series = readSeries(); return; } const s = readSeries(); s[k]++; try { localStorage.setItem("inonu-series", JSON.stringify(s)); } catch (e) {} state.series = s; }
+function resetStore() { state.series = { home: 0, away: 0, draw: 0 }; nightBook.clear(); if (!claimWriter()) return; try { localStorage.setItem("inonu-series", JSON.stringify(state.series)); localStorage.setItem("inonu-night", JSON.stringify({ at: Date.now(), rows: [] })); } catch (e) {} }
 window.addEventListener("storage", e => { if (e.key === "inonu-series") state.series = readSeries(); if (e.key === "inonu-night") mergeNight(); });
 try { const nb = JSON.parse(localStorage.getItem("inonu-night") || "null"); if (nb && Date.now() - nb.at < 8 * 3600e3) nb.rows.forEach(r => nightBook.set(r.id, r)); } catch (e) {}
 let saveT = 0;
 function mergeNight() { try { const nb = JSON.parse(localStorage.getItem("inonu-night") || "null"); if (nb && nb.rows && Date.now() - nb.at < 8 * 3600e3) nb.rows.forEach(r => { const o = nightBook.get(r.id); if (!o || r.pts > o.pts) nightBook.set(r.id, { name: r.name, team: r.team, pts: r.pts }); }); } catch (e) {} }
-function persist() { mergeNight(); try { localStorage.setItem("inonu-night", JSON.stringify({ at: Date.now(), rows: [...nightBook.entries()].map(([id, r]) => Object.assign({ id }, r)).sort((a, b) => b.pts - a.pts).slice(0, 300) })); } catch (e) {} }
+function persist() { mergeNight(); if (!claimWriter()) return; try { localStorage.setItem("inonu-night", JSON.stringify({ at: Date.now(), rows: [...nightBook.entries()].map(([id, r]) => Object.assign({ id }, r)).sort((a, b) => b.pts - a.pts).slice(0, 300) })); } catch (e) {} }
 
 /* ================= helpers ================= */
 function addChant(team, v) { if (v > 0) { const gd = state.goals[team] - state.goals[other(team)]; v *= gd < 0 ? 1.3 : gd > 0 ? 0.85 : 1; if (state.phase === "celebrate") v *= 0.5; } state.chant[team] = clamp(state.chant[team] + v, 0, 100); }
@@ -271,7 +285,7 @@ function fullTime() {
     "<div class='win'>" + (w ? "🏆 " + T("wins", { t: tName(w) }) : "🤝 " + T("draw")) + "</div>" +
     "<div class='ser'>" + T("seriesLine", { hn: tName("home"), h: state.series.home, a: state.series.away, an: tName("away") }) + (state.series.draw ? " · 🤝 " + state.series.draw : "") + "</div>" +
     (motm ? "<div class='motm'>⭐ " + T("motm") + ": @" + esc(motm.name) + " · " + Math.round(motm.mPts) + "</div>" : "") +
-    "<div class='top'><div style='color:#ffd75e;font-size:11px;letter-spacing:1px'>" + T("top3") + "</div>" + top.map((f, i) => "<div>" + ["🥇", "🥈", "🥉"][i] + " @" + esc(f.name) + " (" + tShort(f.team) + ") · " + Math.round(f.mPts) + "</div>").join("") + "</div>" +
+    (!top.length ? "<div class='top quiet'>" + T("quiet") + "</div>" : "<div class='top'><div style='color:#ffd75e;font-size:11px;letter-spacing:1px'>" + T("top3") + "</div>" + top.map((f, i) => "<div>" + ["🥇", "🥈", "🥉"][i] + " @" + esc(f.name) + " (" + tShort(f.team) + ") · " + Math.round(f.mPts) + "</div>").join("") + "</div>") +
     "<div class='nx' id='ft-next'></div>";
   TEAMS.forEach(t => { const c = $("ftc-" + t); if (c) c.getContext("2d").drawImage($("crest-" + t), 0, 0); });
   P.style.display = "block";
@@ -280,7 +294,7 @@ function fullTime() {
 function newMatch(restart) {
   state.goals.home = state.goals.away = 0; state.minute = 0; state.phaseT = 0; if (!restart) state.matchNo++;
   state.penQ.length = 0; state.pen = null; ballFly = null; state.lastShot = null;
-  TEAMS.forEach(t => { state.chant[t] = 10; state.throws[t].length = 0; state.offence[t] = 0; state.banUntil[t] = -1; state.coolUntil[t] = -1; });
+  TEAMS.forEach(t => { state.chant[t] = 10; state.throws[t].length = 0; state.offence[t] = 0; state.warnings[t] = 0; state.banUntil[t] = -1; state.coolUntil[t] = -1; });
   state.momentum = 0; users.forEach(f => { f.mPts = 0; f.mGiftD = 0; f.mGiftPts = 0; });
   $("ftpanel").style.display = "none"; resetPositions(); state.phase = "play"; sfx("whistle", 2); showPop(T("start"), T("matchN", { n: state.matchNo }), "", 2.2, "small", 1);
 }
@@ -292,7 +306,7 @@ function showPop(big, sub, cls, dur, extra, prio) {
   prio = prio || 1;
   if (state.time - popT < popDur && popPrio > prio) { if (popQ.length < 3) popQ.push([big, sub, cls, dur, extra, prio]); return; }   // never hide a goal/penalty behind a smaller popup
   popPrio = prio; $("pop-big").textContent = big; $("pop-sub").textContent = sub || ""; $("pop-sub").style.display = sub ? "inline-block" : "none"; $("pop").className = (cls || "") + " " + (extra || ""); popT = state.time; popDur = dur || 2; }
-function confetti(team) { const cols = team === "home" ? ["#fff", "#111", "#ddd", "#ffd75e"] : ["#e01b2f", "#ffcc22", "#fff", "#ff7a00"]; for (let i = 0; i < 140; i++) confettiP.push({ x: rnd(0, W), y: rnd(-200, -10), vx: rnd(-40, 40), vy: rnd(120, 260), r: rnd(0, 6), vr: rnd(-8, 8), c: cols[i % cols.length], life: rnd(2.5, 4) }); }
+function confetti(team) { const cols = team === "home" ? ["#fff", "#111", "#ddd", "#ffd75e"] : [AC.c1, AC.c2, "#fff", AC.light]; for (let i = 0; i < 140; i++) confettiP.push({ x: rnd(0, W), y: rnd(-200, -10), vx: rnd(-40, 40), vy: rnd(120, 260), r: rnd(0, 6), vr: rnd(-8, 8), c: cols[i % cols.length], life: rnd(2.5, 4) }); }
 function fxBurst(txt, team) { const ex = bursts.find(b => b.team === team && b.base === txt && b.t < 0.6); if (ex) { ex.n++; ex.txt = txt + " x" + ex.n; ex.t = Math.min(ex.t, 0.15); return; } const s = toScreen(drums[team].g.position.x, drums[team].g.position.y + 1.5, drums[team].g.position.z); if (s) bursts.push({ x: s.x, y: s.y, t: 0, txt, base: txt, n: 1, team }); }
 const _v = new THREE.Vector3();
 function toScreen(x, y, z) { _v.set(x, y, z).project(camera); if (_v.z > 1) return null; return { x: (_v.x + 1) / 2 * W, y: (1 - _v.y) / 2 * H }; }
@@ -302,7 +316,7 @@ function updateFX2(dt) {
     g2.save(); g2.translate(p.x, p.y); g2.rotate(p.r); g2.fillStyle = p.c; g2.fillRect(-4, -2.5, 8, 5); g2.restore(); }
   for (let i = hearts.length - 1; i >= 0; i--) { const h = hearts[i]; h.t += dt; if (h.t > 1.2) { hearts.splice(i, 1); continue; } const s = toScreen(h.f._hx, h.f._hy + h.t * 2, h.f._hz); if (!s) continue; g2.globalAlpha = 1 - h.t / 1.2; g2.font = "16px sans-serif"; g2.fillText("❤️", s.x - 8, s.y); g2.globalAlpha = 1; }
   for (let i = bursts.length - 1; i >= 0; i--) { const b = bursts[i]; b.t += dt; if (b.t > 0.8) { bursts.splice(i, 1); continue; } const k = b.t / 0.8, sc = 0.6 + Math.sin(Math.min(1, k * 3) * Math.PI / 2) * 0.7;
-    g2.save(); g2.translate(b.x, b.y - k * 30); g2.scale(sc, sc); g2.rotate(-0.15); g2.globalAlpha = 1 - k * k; g2.font = "900 30px Trebuchet MS"; g2.textAlign = "center"; g2.lineWidth = 6; g2.strokeStyle = "#000"; g2.strokeText(b.txt, 0, 0); g2.fillStyle = b.team === "home" ? "#fff" : "#ffcc22"; g2.fillText(b.txt, 0, 0); g2.restore(); }
+    g2.save(); g2.translate(b.x, b.y - k * 30); g2.scale(sc, sc); g2.rotate(-0.15); g2.globalAlpha = 1 - k * k; g2.font = "900 30px Trebuchet MS"; g2.textAlign = "center"; g2.lineWidth = 6; g2.strokeStyle = "#000"; g2.strokeText(b.txt, 0, 0); g2.fillStyle = b.team === "home" ? "#fff" : AC.hi; g2.fillText(b.txt, 0, 0); g2.restore(); }
   // drum shock rings (screen space)
   for (let i = rings.length - 1; i >= 0; i--) { const r = rings[i]; r.t += dt; if (r.t > 0.6) { rings.splice(i, 1); continue; } const d = drums[r.team].g.position, s = toScreen(d.x, d.y, d.z); if (!s) continue;
     g2.beginPath(); g2.ellipse(s.x, s.y, 10 + r.t * 120, 5 + r.t * 50, 0, 0, 7); g2.lineWidth = 5 * (1 - r.t / 0.6); g2.strokeStyle = r.team === "home" ? "rgba(255,255,255,.9)" : "rgba(255,204,34,.9)"; g2.stroke(); }
@@ -315,7 +329,9 @@ function updateFX2(dt) {
   if (ck > 1.2 && ck < 9 && celebTeam) { if (ce.dataset.team !== celebTeam + CONFIG.lang) { ce.innerHTML = "<div>" + T("celebH") + "</div><div class='a'>" + T("celebA", { t: tShort(other(celebTeam)) }) + "</div>"; ce.dataset.team = celebTeam + CONFIG.lang; } ce.style.opacity = Math.min(1, (ck - 1.2) * 3, (9 - ck) * 2); ce.style.transform = "translateY(" + (Math.sin(ck * 4) * 3).toFixed(1) + "px)"; } else ce.style.opacity = 0;
   const cardK = state.time - cardT; $("card").style.background = cardColor; $("card").style.opacity = cardK < 2.2 ? Math.min(1, cardK * 4, (2.2 - cardK) * 3) : 0; $("card").style.transform = "rotate(" + (8 + Math.sin(cardK * 6) * 4) + "deg)";
   // team-pick prompt + attack banner (game-time driven)
-  const pk2 = state.time - promptT; $("prompt").style.opacity = pk2 < promptDur ? Math.min(1, pk2 * 5, (promptDur - pk2) * 4) : 0;
+  const pk2 = state.time - promptT, pr = $("prompt"), pop2 = pk2 < promptDur ? Math.min(1, pk2 * 5, (promptDur - pk2) * 4) : 0; pr.style.opacity = pop2;
+  const prOn = pop2 > 0 && !!pr.textContent; pr.style.display = prOn ? "block" : "none";          // C5: no empty box between flushes
+  if (prOn) { const sp = $("soundpill"); pr.style.bottom = sp.offsetParent ? (parseFloat(getComputedStyle(sp).bottom) + sp.offsetHeight + 8) + "px" : ""; }   // B2: stacked above the sound pill
   const at = $("attack"); const att = state.phase === "play" ? TEAMS.find(inAttack) : null;
   if (att) { const txt = T("attack", { t: tName(att) }) + " " + Math.round(goalChance(att) * 100) + "%"; if (at.textContent !== txt) at.textContent = txt; at.className = att; at.style.opacity = 0.95; } else at.style.opacity = 0;
 }
@@ -401,6 +417,7 @@ function applyLang() {
   const chips = $("chips"); chips.innerHTML = "";
   (EN() ? ["1", "2", "Come on!", "drum", "torch", "bottle", "lighter"] : ["1", "2", "Haydi!", "davul", "meşale", "şişe", "çakmak"]).forEach(k => { const b = document.createElement("button"); b.textContent = k; b.onclick = () => { $("fake-comment").value = k; $("btn-send").click(); }; chips.appendChild(b); });
   if (promptMake) $("prompt").textContent = promptMake();
+  $("deskhint").textContent = T("deskHint");
   $("celebrate").dataset.team = ""; $("replay-t").textContent = T("replay"); if (WX.scoreCanvas) drawScoreboard(true);
   if (liveState) setLive(liveState);
 }
@@ -410,7 +427,7 @@ function drawCrest(t) {
   g.save(); g.clip();
   if (t === "home") { for (let i = 0; i < 6; i++) { g.fillStyle = i % 2 ? "#fff" : "#111"; g.fillRect(4 + i * 12, 0, 12, 92); } }
   else { g.fillStyle = C.kit[0]; g.fillRect(0, 0, 80, 92); g.fillStyle = C.kit[1]; g.fillRect(0, 36, 80, 18); }
-  g.restore(); g.lineWidth = 5; g.strokeStyle = t === "home" ? "#fff" : "#ffcc22"; g.stroke();
+  g.restore(); g.lineWidth = 5; g.strokeStyle = t === "home" ? "#fff" : AC.hi; g.stroke();
   g.fillStyle = t === "home" ? "#ffd75e" : "#fff"; g.font = "900 30px Trebuchet MS"; g.textAlign = "center"; g.lineWidth = 4; g.strokeStyle = "#000"; g.strokeText("★", 40, 56); g.fillText("★", 40, 56);
 }
 
@@ -507,6 +524,8 @@ function fit() {
   if (nh !== H) { H = nh; stage.style.height = H + "px"; fx2.height = H; renderer.setSize(W, H, false); camera.aspect = W / H; camera.updateProjectionMatrix(); }
   const s = Math.min(Math.max(160, availW) / W, availH / H);
   sizer.style.width = W * s + "px"; sizer.style.height = H * s + "px"; stage.style.transform = "scale(" + s + ")";
+  const margin = (app.clientWidth - W * s - (panelOn ? panel.offsetWidth + 16 : 0)) / 2;
+  document.body.classList.toggle("wide", !IS_MOBILE && !CLIP && margin > 230);   // desktop: "phone view · OBS overlay" hint in the margin
 }
 let CAMX = +(Q.get("cx") || -34), CAMY = +(Q.get("cy") || 60), LOOKX = +(Q.get("lx") || 4.5), CAMFOV = +(Q.get("fov") || 52);
 const FOVP = +(Q.get("fp") || 0.9), LOOKK = +(Q.get("lk") || 40);
@@ -566,9 +585,23 @@ window.__state = state; window.__users = users; window.__pending = pending; wind
 let lastT = 0;
 // slow devices: up to 0.25 s per frame is simulated in ≤50 ms logic substeps and drawn once, so a 3-minute match stays 3 minutes (no slow motion);
 // longer gaps (hidden tab) are not fast-forwarded
-function tick(now) { const rawFull = (lastT ? now - lastT : 16) / 1000, raw = Math.min(0.25, rawFull); lastT = now; qualityMonitor(rawFull);
-  if (!state.paused) try { const n = Math.ceil(raw / 0.05), d = raw / n; for (let i = 0; i < n; i++) step(d, i < n - 1); } catch (e) { console.error(e); }
+/* B4 (pass 3): the match runs on the wall clock. Time owed since the last frame is simulated in <=50 ms substeps, so a game-minute stays 2 s of real time
+   even when rAF is throttled (occluded/slow tab: up to SIM.frameCap s caught up per drawn frame) or stopped (hidden tab: a timer catches up logic-only,
+   nothing is rendered while hidden). Debt beyond SIM.maxDebt (e.g. a sleeping laptop) is dropped instead of fast-forwarding a whole match. */
+const SIM = { sub: 0.05, frameCap: 2, maxDebt: 120, debt: 0, lastWall: 0 };
+function advance(nowMs, draw) {
+  const wall = nowMs / 1000, el = SIM.lastWall ? Math.max(0, wall - SIM.lastWall) : 1 / 60; SIM.lastWall = wall;
+  if (state.paused) { SIM.debt = 0; return; }
+  SIM.debt = Math.min(SIM.maxDebt, SIM.debt + el);
+  const run = Math.min(SIM.debt, draw ? SIM.frameCap : SIM.maxDebt); if (run <= 0) return; SIM.debt -= run;
+  try { const n = Math.ceil(run / SIM.sub - 1e-9), d = run / n; for (let i = 0; i < n; i++) step(d, !draw || i < n - 1); } catch (e) { console.error(e); }
+}
+window.__sim = SIM;
+function tick(now) { const rawFull = (lastT ? now - lastT : 16) / 1000; lastT = now; qualityMonitor(rawFull);
+  if (!document.hidden) advance(now, true);
   requestAnimationFrame(tick); }
+setInterval(() => { if (document.hidden && !CLIP) advance(performance.now(), false); }, 500);   // hidden tab: rAF stops, the match keeps real time without rendering
+document.addEventListener("visibilitychange", () => { if (!document.hidden) lastT = 0; });
 function setPaused(p) { state.paused = p; $("btn-pause").textContent = p ? T("ui").resume : T("ui").pause; if (p) $("clock").textContent = "⏸ " + $("clock").textContent; }
 function toggleHelp(on) { $("help").classList.toggle("on", on === undefined ? !$("help").classList.contains("on") : on); }
 function setBot(on) { botOn = on; $("bot-toggle").checked = on; }
@@ -576,6 +609,7 @@ function boot() {
   buildSky(); buildPitch(); buildStands(); buildCity(); buildFans(); buildPlayers(); buildFX(); buildWorld2();
   { const qp = CONFIG.quality.names.indexOf(Q.get("q")); QUAL.locked = qp >= 0 || CLIP; applyQuality(qp >= 0 ? qp : CLIP ? 2 : IS_MOBILE ? 1 : 2); }
   TEAMS.forEach(drawCrest); if (Q.get("lang") === "en") CONFIG.lang = "en"; applyLang(); fit();
+  claimWriter(); logLine(T("rivalTonight", { t: tName("away") }));
   camera.up.set(1, 0, 0); camera.position.set(CAMX, CAMY, 0); camTarget.set(LOOKX, 0, 0); camera.lookAt(camTarget);
   const who = () => { const n = $("fake-user").value.trim() || "pablo"; return { userId: "local:" + n.toLowerCase(), username: n }; };
   $("btn-send").onclick = () => handleLiveEvent(Object.assign({ type: "chat", comment: $("fake-comment").value }, who()));
