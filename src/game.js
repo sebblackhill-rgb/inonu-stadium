@@ -1075,6 +1075,35 @@ function applyPhaseUI() {
   ruleAt = 0; renderStrip(); rerenderPop();
   refreshUI();
 }
+function missionModel(s, cfg) {
+  const tr = cfg.lang === "tr", layers = cfg.layers;
+  const sun = Math.min(layers, s.teams.sun.layers), nile = Math.min(layers, s.teams.nile.layers);
+  const remain = (v) => Math.max(0, Math.ceil(v - s.time));
+  if (s.phase === "boss") {
+    return { phase: "boss",
+      main: tr ? "🐍 APEP'İ YEN · " + Math.ceil(s.bossHP).toLocaleString() + " CAN"
+               : "🐍 DEFEAT APEP · " + Math.ceil(s.bossHP).toLocaleString() + " HP",
+      detail: "⏳ " + remain(s.bossEnds) + "s · " + (tr ? "HEP BİRLİKTE" : "FIGHT TOGETHER") };
+  }
+  if (s.phase === "victory") return { phase: "victory",
+    main: tr ? "🏆 PİRAMİT TAMAMLANDI" : "🏆 PYRAMID COMPLETE",
+    detail: (tr ? "YENİ TUR" : "NEXT ROUND") + " · " + remain(s.phaseAt) + "s" };
+  if (s.phase === "race") return { phase: "race",
+    main: tr ? "🏁 " + String(s.raceWinner || "").toUpperCase() + " ÖNDE BİTİRDİ"
+             : "🏁 " + String(s.raceWinner || "").toUpperCase() + " FINISHED FIRST",
+    detail: (tr ? "APEP GELİYOR" : "APEP APPROACHES") + " · " + remain(s.phaseAt) + "s" };
+  const next = Math.min(layers, (Math.floor(Math.max(sun,nile) / cfg.milestoneEvery) + 1) * cfg.milestoneEvery);
+  return {phase:"build",
+    main: "🧱 " + (tr ? "SONRAKİ HEDEF · KAT " : "NEXT MILESTONE · LAYER ") + next,
+    detail: "SUN " + sun + "/" + layers + " · NILE " + nile + "/" + layers };
+}
+function renderMission() {
+  const el = $("mission"); if (!el) return;
+  const m = missionModel(state, CONFIG);
+  el.className = "mission " + m.phase;
+  if ($("mission-main").textContent !== m.main) $("mission-main").textContent = m.main;
+  if ($("mission-detail").textContent !== m.detail) $("mission-detail").textContent = m.detail;
+}
 function renderMeters() {
   let html = "";
   if (state.phase === "boss") {
@@ -1163,7 +1192,7 @@ function renderWaiting() {
       : (state.conn.st === "live" || state.conn.st === "listening" ? S("waitReady") : S("waitSoon"));
   }
 }
-function refreshUI() { renderWaiting(); renderMeters(); renderCounts(); renderBoard(); renderStrip(); if (window.renderHostPanel) window.renderHostPanel(); }
+function refreshUI() { renderWaiting(); renderMeters(); renderMission(); renderCounts(); renderBoard(); renderStrip(); if (window.renderHostPanel) window.renderHostPanel(); }
 function toggleLang() {
   // all viewer-facing text re-renders, including the visible log (rebuilt from its stored message keys)
   CONFIG.lang = CONFIG.lang === "en" ? "tr" : "en";
