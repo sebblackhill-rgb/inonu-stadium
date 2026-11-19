@@ -54,3 +54,70 @@ test('host test buttons are tagged and LIVE guard is active',()=>{
 test('full stands give viewer-visible feedback',()=>{
   assert(src.includes('Tribün dolu · diğer takımı deneyin'));
 });
+
+test('full-time visual redraw is translated without a second series write',()=>{
+  const start=src.indexOf('function renderFullTimePanel() {');
+  const end=src.indexOf('function fullTime() {',start);
+  assert(start>=0 && end>start);
+  const panel={innerHTML:'',style:{}};
+  const cfg={lang:'tr'};
+  const state={goals:{home:2,away:1},series:{home:1,away:0,draw:0}};
+  const c={
+    state,CONFIG:cfg,teamFans:{home:[],away:[]},
+    topFans:()=>[],T:k=>cfg.lang+'-'+k,tName:t=>t,tShort:t=>t,TEAMS:['home','away'],
+    $:id=>id==='ftpanel'?panel:({getContext:()=>({drawImage(){}})}),
+  };
+  vm.createContext(c);vm.runInContext(src.slice(start,end),c);
+  c.renderFullTimePanel();
+  const before=panel.innerHTML;cfg.lang='en';c.renderFullTimePanel();
+  assert.notEqual(panel.innerHTML,before);
+  assert.equal(state.series.home,1);
+  assert.equal(state.series.away,0);
+});
+test('LIVE retry removes prior event subscription and ignores stale callbacks',async()=>{
+  const start=src.indexOf('let liveState = null');
+  const end=src.indexOf('/* ================= camera, layout, loop, boot',start);
+  assert(start>=0 && end>start);
+  const listeners=[];const accepted=[];const status={};
+  const bridge={
+    async insertCoin(){},
+    onTikTokLiveEvent(fn){
+      const row={fn,closed:false};listeners.push(row);
+      return ()=>{row.closed=true};
+    },
+    onDisconnect(){return ()=>{}}
+  };
+  const c={
+    window:{__liveAttempts:[],Playroom:bridge},
+    Q:{get:k=>k==='live'?'1':null},CONFIG:{live:{maxTries:2,backoff:[0,0]}},
+    state:{time:1},$:(id)=>({style:{},textContent:'',className:''}),
+    T:k=>k,performance:{now:()=>1000},console:{warn(){}},
+    document:{
+      querySelectorAll(){return[]},
+      createElement(){return{dataset:{},onload:null,onerror:null}},
+      head:{appendChild(x){x.onload?.()}}
+    },
+    clearTimeout(){},setTimeout(){return 1},
+    handleLiveEvent:e=>accepted.push(e)
+  };
+  vm.createContext(c);vm.runInContext(src.slice(start,end),c);
+  await c.tryConnectPlayroom(true);
+  await c.tryConnectPlayroom(true);
+  assert.equal(listeners.length,2);
+  assert.equal(listeners[0].closed,true);
+  const event={type:'gift',data:{userId:'tester',name:'Viewer',msgId:'g1',giftName:'Rose',giftDiamondCount:5}};
+  listeners[0].fn(event);
+  listeners[1].fn(event);
+  assert.equal(accepted.length,1);
+  assert.equal(accepted[0].diamondCount,5);
+  listeners[1].fn({type:'follow',data:{userId:'tester'}});
+  assert.equal(accepted.length,1);
+});
+test('LIVE presentation and restart safeguards remain enabled',()=>{
+  assert(src.includes('if (state.phase === "ft") renderFullTimePanel();'));
+  assert(src.includes('state.warningGeneration = (state.warningGeneration || 0) + 1'));
+  assert(src.includes('if (generation === (state.warningGeneration || 0)) refereeWarning'));
+  assert(src.includes('if (!window.confirm('));
+  assert(src.includes('window.innerWidth < 860 || Q.get("live") === "1"'));
+  assert(src.includes('demo bots disabled in LIVE mode'));
+});
