@@ -45,6 +45,7 @@ jobs:
           python3 -m http.server 8769 --bind 127.0.0.1 > /tmp/pyramid-http.log 2>&1 &
           sleep 2
           timeout 180s node tests/browser-smoke.mjs
+          timeout 180s node tests/match-cycle-browser.mjs
       - name: Upload screenshot evidence
         if: always()
         uses: actions/upload-artifact@v4
