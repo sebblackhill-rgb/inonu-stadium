@@ -20,3 +20,29 @@ jobs:
           bash build.sh
       - name: Source-anchored regression checks
         run: node --test tests/stabilization.test.mjs
+
+  browser-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install lightweight headless Chrome driver
+        run: npm install --no-save --no-audit --no-fund playwright-core@1.58.2
+      - name: Build local staging game without changing the published branch
+        run: bash build.sh
+      - name: Run real Chrome 390px/1080px acceptance and screenshots
+        run: |
+          python3 -m http.server 8768 --bind 127.0.0.1 >/tmp/inonu-staging-http.log 2>&1 &
+          sleep 2
+          timeout 150s node tests/staging-browser.mjs
+      - name: Upload screenshots for review (even if browser checks fail)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: inonu-chromium-staging-evidence
+          path: browser-evidence/*.png
+          if-no-files-found: warn
+          retention-days: 14
