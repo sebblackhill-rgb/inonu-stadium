@@ -1114,12 +1114,15 @@ function renderCounts() {
   $("counts").innerHTML = txt;
 }
 function topBy(key, n, filter) {
-  return [...state.users.values()].filter(u => u.team && u[key] > 0 && (!filter || filter(u))).sort((a, b) => b[key] - a[key]).slice(0, n);
+  return [...state.users.values()].filter(u => u.team && u[key] > 0
+    && (state.mode !== "live" || u.src === "live")
+    && (!filter || filter(u))).sort((a, b) => b[key] - a[key]).slice(0, n);
 }
 function renderBoard() {
   let html = "<h2>👑 " + S("boardPharaohs") + "</h2>";
   for (const id of TEAM_IDS) {
-    const p = [...state.users.values()].find(u => u.team === id && u.pharaoh);
+    const p = [...state.users.values()].find(u => u.team === id && u.pharaoh
+      && (state.mode !== "live" || u.src === "live"));
     const c = CONFIG.teams[id].colors;
     if (!p) html += '<div class="cap-row"><div class="av" style="border-color:' + c.css + '"><img src="' + crestURL[id] + '"/></div><div class="nm" style="color:#b8a888;font-size:10px">' + esc(S("pharaohNeed", { p: CONFIG.pharaohGift })) + "</div></div>";
     else {
@@ -1147,9 +1150,16 @@ function renderWaiting() {
   const on = state.mode === "live" && !crew && state.phase === "build";
   el.classList.toggle("on", on);
   if (on) {
-    $("wait-t").textContent = S("waitTitle");
-    $("wait-s").innerHTML = esc(S("waitSub")).replace("{k1}", '<b class="k sun">' + esc(teamShort("sun")) + "</b>").replace("{k2}", '<b class="k nile">' + esc(teamShort("nile")) + "</b>");
-    $("wait-c").textContent = state.conn.st === "live" || state.conn.st === "listening" ? S("waitReady") : S("waitSoon");
+    const disconnected = state.conn.st === "down";
+    $("wait-t").textContent = disconnected
+      ? (CONFIG.lang === "tr" ? "CANLI BAĞLANTI KESİLDİ" : "LIVE CONNECTION UNAVAILABLE")
+      : S("waitTitle");
+    $("wait-s").innerHTML = disconnected
+      ? (CONFIG.lang === "tr" ? "Yayıncı tekrar bağlanmalı. Şu an katkılar alınamıyor." : "Host must reconnect. Contributions are not being received right now.")
+      : esc(S("waitSub")).replace("{k1}", '<b class="k sun">' + esc(teamShort("sun")) + "</b>").replace("{k2}", '<b class="k nile">' + esc(teamShort("nile")) + "</b>");
+    $("wait-c").textContent = disconnected
+      ? (CONFIG.lang === "tr" ? "BAĞLANTI YOK" : "NOT CONNECTED")
+      : (state.conn.st === "live" || state.conn.st === "listening" ? S("waitReady") : S("waitSoon"));
   }
 }
 function refreshUI() { renderWaiting(); renderMeters(); renderCounts(); renderBoard(); renderStrip(); if (window.renderHostPanel) window.renderHostPanel(); }
@@ -2190,7 +2200,8 @@ window.onPharaoh = (u) => { const L = litters[u.team]; if (L) { L.user = u; if (
 function updateLitters(t, dt) {
   for (const id of TEAM_IDS) {
     const L = litters[id];
-    const p = [...state.users.values()].find(u => u.team === id && u.pharaoh);
+    const p = [...state.users.values()].find(u => u.team === id && u.pharaoh
+      && (state.mode !== "live" || u.src === "live"));
     L.user = p || null; L.g.visible = !!p;
     if (!p) continue;
     const T = state.teams[id], path = paths[id];
@@ -2857,7 +2868,7 @@ function boot() {
 window.renderHostPanel = function () {
   if (document.body.classList.contains("panel-hidden")) return;
   const ct = connText();
-  $("host-status").innerHTML = "Mode: <b>" + state.mode.toUpperCase() + "</b> · " + '<span class="conn ' + ct[0] + '">' + esc(ct[1]) + "</span> · speed ×" + SPEED + " · round " + state.round + " · " + state.phase + (state.paused ? " · PAUSED" : "");
+  $("host-status").innerHTML = "Mode: <b>" + state.mode.toUpperCase() + "</b> · " + '<span class="conn ' + ct[0] + '">' + esc(ct[1]) + "</span> · speed ×" + SPEED + " · round " + state.round + " · " + state.phase + " · PYRAMID STAGING 2026-11-19" + (state.paused ? " · PAUSED" : "");
   $("h-retry").disabled = state.mode !== "live";
   $("h-pause").textContent = state.paused ? "▶ Resume" : "⏸ Pause";
   $("h-calm").textContent = "✨ Calm effects: " + (CONFIG.calmEffects ? "on" : "off");
