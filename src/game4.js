@@ -520,7 +520,17 @@ window.__seedCrowd = seedCrowd;
 
 /* ================= Playroom TikTok LIVE bridge (?live=1) with honest status ================= */
 let liveState = null, lastLiveEvt = -1, liveConnectedAt = -1;
-let liveTry = 0, liveRetryAt = 0, liveTimer = null, liveHooked = false; window.__liveAttempts = [];
+let liveTry = 0, liveRetryAt = 0, liveTimer = null; window.__liveAttempts = [];
+// The documented Playroom event listener returns an unsubscribe function.
+// Generation gates also suppress stale callbacks if a transport cannot unsubscribe.
+let liveGeneration = 0, liveUnsubscribe = null, disconnectUnsubscribe = null;
+function clearLiveSubscriptions() {
+  for (const off of [liveUnsubscribe, disconnectUnsubscribe]) {
+    if (typeof off === "function") { try { off(); } catch (e) { console.warn("[LIVE] unsubscribe", e); } }
+  }
+  liveUnsubscribe = null;
+  disconnectUnsubscribe = null;
+}
 const RETRY_SCALE = +(Q.get("retryScale") || 1);   // test hook: shrink the backoff delays
 function setLive(st, extra) {
   const tick = extra === "tick"; liveState = st; window.__liveStatus = st;
@@ -544,7 +554,9 @@ function liveWatchdog() {
 async function tryConnectPlayroom(manual) {
   if (Q.get("live") !== "1") return;
   if (manual) liveTry = 0;
-  clearTimeout(liveTimer); liveRetryAt = 0; liveTry++; window.__liveAttempts.push(performance.now());
+  const generation = ++liveGeneration;
+  clearTimeout(liveTimer); liveRetryAt = 0; clearLiveSubscriptions();
+  liveTry++; window.__liveAttempts.push(performance.now());
   setLive("connecting");
   try {
     const src = window.__bridgeSrc || Q.get("bridgeSrc") || "https://cdn.joinplayroom.com/playroomkit/multiplayer.full.umd.js";
@@ -554,8 +566,9 @@ async function tryConnectPlayroom(manual) {
     const insertCoin = mod.insertCoin || window.insertCoin, onTikTokLiveEvent = mod.onTikTokLiveEvent || window.onTikTokLiveEvent, onDisconnect = mod.onDisconnect || window.onDisconnect;
     if (typeof insertCoin !== "function" || typeof onTikTokLiveEvent !== "function") throw new Error("Playroom API not found");
     await Promise.race([insertCoin({ liveMode: "tiktok" }), new Promise((_, rej) => setTimeout(() => rej(new Error("insertCoin timeout")), 60000))]);
-    if (!liveHooked) { liveHooked = true;
-    onTikTokLiveEvent((event) => {
+    if (generation !== liveGeneration) return; // an older attempt finished too late
+    const off = onTikTokLiveEvent((event) => {
+      if (generation !== liveGeneration) return;
       const d = (event && event.data) || {}, raw = String((event && event.type) || "").toLowerCase();
       if (!["gift", "chat", "like"].includes(raw)) return; // follows/shares must not become free chants
       if (!d.userId) { console.warn("[LIVE] ignored event without stable viewer ID"); return; }
@@ -574,10 +587,17 @@ async function tryConnectPlayroom(manual) {
       handleLiveEvent(mapped);
       if (liveState !== "ok") setLive("ok");
     });
-    if (typeof onDisconnect === "function") onDisconnect(() => setLive("lost"));
-    window.addEventListener("offline", () => setLive("lost")); }
+    liveUnsubscribe = typeof off === "function" ? off : null;
+    if (typeof onDisconnect === "function") {
+      const offDisconnect = onDisconnect(() => {
+        if (generation === liveGeneration) setLive("lost");
+      });
+      disconnectUnsubscribe = typeof offDisconnect === "function" ? offDisconnect : null;
+    }
     liveConnectedAt = state.time; setLive("ok");
   } catch (e) {
+    if (generation !== liveGeneration) return;
+    clearLiveSubscriptions();
     console.warn("[Playroom] not connected (try " + liveTry + "):", e && e.message);
     if (liveTry < CONFIG.live.maxTries) { const B = CONFIG.live.backoff, d = B[Math.min(liveTry - 1, B.length - 1)] * 1000 * RETRY_SCALE; (window.__liveDelays = window.__liveDelays || []).push(d); liveRetryAt = performance.now() + d; liveTimer = setTimeout(() => tryConnectPlayroom(false), d); }
     setLive("fail");
@@ -674,7 +694,13 @@ setInterval(() => { if (document.hidden && !CLIP) advance(performance.now(), fal
 document.addEventListener("visibilitychange", () => { if (!document.hidden) lastT = 0; });
 function setPaused(p) { state.paused = p; $("btn-pause").textContent = p ? T("ui").resume : T("ui").pause; if (p) $("clock").textContent = "⏸ " + $("clock").textContent; }
 function toggleHelp(on) { $("help").classList.toggle("on", on === undefined ? !$("help").classList.contains("on") : on); }
-function setBot(on) { botOn = on; $("bot-toggle").checked = on; }
+function setBot(on) {
+  // A real broadcast must never be quietly mixed with synthetic gifts/likes.
+  const allowed = Q.get("live") !== "1" || Q.get("host") === "1";
+  botOn = Boolean(on && allowed);
+  $("bot-toggle").checked = botOn;
+  if (on && !allowed) console.warn("[LIVE] demo bots disabled in LIVE mode");
+}
 function boot() {
   buildSky(); buildPitch(); buildStands(); buildCity(); buildFans(); buildPlayers(); buildFX(); buildWorld2();
   { const qp = CONFIG.quality.names.indexOf(Q.get("q")); QUAL.locked = qp >= 0 || CLIP; applyQuality(qp >= 0 ? qp : CLIP ? 2 : IS_MOBILE ? 1 : 2); }
