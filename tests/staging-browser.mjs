@@ -31,9 +31,17 @@ try{
       const rejected=(fan.gifts||0)===pre;
       window.handleLiveEvent({type:"gift",userId:id,username:"QA Viewer",giftName:"Rose",diamondCount:1,repeatCount:1});
       const accepted=(fan.gifts||0)>pre;
+      const likeBefore={chant:state.chant.home,points:fan.nPts||0,window:fan.likeWin||0};
+      for (const bad of [-5,0,NaN,Infinity,"5",100001]) {
+        window.handleLiveEvent({type:"like",userId:id,username:"QA Viewer",likeCount:bad});
+      }
+      const invalidLikesRejected=state.chant.home===likeBefore.chant &&
+        (fan.nPts||0)===likeBefore.points && (fan.likeWin||0)===likeBefore.window;
+      window.handleLiveEvent({type:"like",userId:id,username:"QA Viewer",likeCount:3});
+      const validLikeApplied=state.chant.home>likeBefore.chant;
       const numeric=[state.momentum,state.ballZ,state.chant.home,state.chant.away,state.goals.home,state.goals.away];
       const overflow=document.documentElement.scrollWidth-window.innerWidth;
-      return {joined:fan.team==="home",rejected,accepted,finite:numeric.every(Number.isFinite),overflow,
+      return {joined:fan.team==="home",rejected,accepted,invalidLikesRejected,validLikeApplied,finite:numeric.every(Number.isFinite),overflow,
         canvas:document.querySelectorAll("canvas").length,
         liveUrl:location.search.includes("live=1"),version:document.title};
     });
@@ -46,7 +54,7 @@ try{
     await page.screenshot({path:`${OUT}/inonu-${name}-gameplay.png`,fullPage:true});
     records.push({name,result,afterScene,errors});
     console.log(name,JSON.stringify({result,errors}));
-    if(!result.joined || !result.rejected || !result.accepted || !result.finite || result.overflow>4 || result.canvas<1 || result.liveUrl || errors.length)
+    if(!result.joined || !result.rejected || !result.accepted || !result.invalidLikesRejected || !result.validLikeApplied || !result.finite || result.overflow>4 || result.canvas<1 || result.liveUrl || errors.length)
        throw Error("Failed real-browser staging acceptance for "+name);
   }finally{await page.close()}
  }
