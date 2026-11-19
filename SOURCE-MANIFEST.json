@@ -1,0 +1,14 @@
+{
+  "capturedAt": "2026-11-19",
+  "source": "public Flypod browser build",
+  "origin": "https://0f34b9b3e51449f5.flypod.page",
+  "servedHtmlSha256": "19d11b6481c0261611057b71ca20230ceef7b535c4d8cf732898fe136db77ea5",
+  "matchesPriorQA": false,
+  "priorQASha256": "b60c6e5904c8262c8972b8a11825711f4c9724c0b81ae397af2c5754377791ef",
+  "sizeBytes": 801954,
+  "gameJsSha256": "5249343551f61cdf788b3572e4d4773dbcd778ff52ff29f81176b0af4d7e9473",
+  "limitations": [
+    "original Grokbot authoring workspace unavailable",
+    "no real LIVE provider testing"
+  ]
+}

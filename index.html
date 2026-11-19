@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231b2f6b'/%3E%3Cpath d='M32 10 L56 50 H8Z' fill='%23e8c35a'/%3E%3C/svg%3E" />
+  <title>Build the Great Pyramid — LIVE Crowd Game</title>
+  <meta name="description" content="A TikTok LIVE crowd game: type SUN or NILE to join a crew, haul stones with comments and gifts, raise the Great Pyramid and defeat Apep." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://0f34b9b3e51449f5.flypod.page/" />
+  <meta property="og:title" content="Build the Great Pyramid — LIVE Crowd Game" />
+  <meta property="og:description" content="Type SUN or NILE to join a crew, haul stones with comments and gifts, raise the Great Pyramid and defeat Apep. Tap to play the demo." />
+  <meta property="og:image" content="https://0f34b9b3e51449f5.flypod.page/og.jpg" />
+  <meta property="og:image:secure_url" content="https://0f34b9b3e51449f5.flypod.page/og.jpg" />
+  <meta property="og:image:type" content="image/jpeg" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="Build the Great Pyramid: two crews raise a golden pyramid in the Egyptian desert" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Build the Great Pyramid — LIVE Crowd Game" />
+  <meta name="twitter:description" content="Type SUN or NILE to join a crew, raise the Great Pyramid and defeat Apep. Tap to play the demo." />
+  <meta name="twitter:image" content="https://0f34b9b3e51449f5.flypod.page/og.jpg" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+<div id="app">
+  <div id="stage-sizer">
+    <div id="stage">
+      <canvas id="c"></canvas>
+      <div id="vignette"></div>
+      <div id="labels"></div>
+      <canvas id="fx2" width="540" height="960"></canvas>
+      <div id="flash"></div>
+      <div id="ui">
+        <button id="mute" class="hit" title="Toggle sound (M)" aria-label="Toggle sound">🔇</button>
+        <button id="panel-btn" class="hit" title="Host panel (H)" aria-label="Toggle host panel">🧪</button>
+        <button id="lang-btn" class="hit" title="English / Türkçe (L)" aria-label="Switch language English / Turkish">🌐</button>
+        <header id="banner">
+          <h1><span>🔺</span><span id="banner-title">BUILD THE GREAT PYRAMID</span><span>🔺</span></h1>
+          <div class="rules">
+            <div class="rule"><div class="k" id="r1k">Grab a rope</div><div class="how" id="r1h">Type SUN or NILE</div></div>
+            <div class="vrule"></div>
+            <div class="rule"><div class="k" id="r2k">Power heave</div><div class="how" id="r2h">🌹 Rose / ❤️ Heart</div></div>
+          </div>
+        </header>
+        <div id="meters"></div>
+        <div id="leftcol"><div id="counts"></div><div id="log"></div></div>
+        <div id="waiting" role="status"><div class="hg">⏳</div><div class="t" id="wait-t">The crew is gathering…</div><div class="s" id="wait-s"></div>
+          <div class="crests"><img id="wait-c1" alt=""/><img id="wait-c2" alt=""/></div><div class="c" id="wait-c"></div></div>
+        <div id="strip"><div id="strip-rule"></div><div id="strip-rc" aria-hidden="true"></div></div>
+        <div id="a11y" class="sr-only" role="status" aria-live="polite"></div>
+        <aside id="board"></aside>
+        <div id="pop"><div class="photo" id="pop-photo"></div><div class="big" id="pop-big"></div><div class="sub" id="pop-sub"></div></div>
+      </div>
+      <div id="start"><div class="t">🔺 BUILD THE<br/>GREAT PYRAMID 🔺</div><div class="b" id="start-b" role="button" tabindex="0">▶ TAP TO START</div>
+        <div class="s" id="start-s">Demo: a bot crowd joins and plays. Tap 🧪 to open the test panel and join yourself, send roses or a Lion.</div></div>
+    </div>
+  </div>
+  <aside id="test-panel" aria-label="Host panel">
+    <div class="panel-head"><span class="badge">HOST PANEL</span><span class="hintk">H hide · L language · M sound</span></div>
+    <div id="host-status">Mode: TEST</div>
+    <div class="host-row">
+      <button type="button" id="h-retry">↻ Retry live</button>
+      <button type="button" id="h-pause">⏸ Pause</button>
+      <button type="button" id="h-reset">⟲ Reset round</button>
+    </div>
+    <div class="host-row">
+      <button type="button" id="h-lang">🌐 EN / TR</button>
+      <button type="button" id="h-calm">✨ Calm effects: off</button>
+    </div>
+    <label>Event health</label>
+    <div id="host-stats"></div>
+    <ul id="host-rc"></ul>
+    <hr />
+    <label>Test events <span class="tag" style="background:#3c5a8a;color:#fff;padding:0 4px;border-radius:4px">TEST</span></label>
+    <label for="fake-user">Username</label>
+    <input id="fake-user" type="text" value="Pablo" maxlength="18" autocomplete="off" />
+    <label for="fake-comment">Comment</label>
+    <input id="fake-comment" type="text" value="SUN" maxlength="48" autocomplete="off" />
+    <div class="chips" id="chips"></div>
+    <div class="row"><button type="button" id="btn-send">Send comment</button></div>
+    <div class="row"><button type="button" id="btn-like">👍 Like</button><button type="button" id="btn-rose">🌹 Rose</button><button type="button" id="btn-heart">❤️ Heart</button></div>
+    <div class="row"><button type="button" id="btn-med">🎁 Medium gift</button><button type="button" id="btn-lion">🦁 Lion gift</button></div>
+    <hr />
+    <label class="bot-row"><input type="checkbox" id="bot-toggle" /> Demo bot crowd</label>
+    <label for="bot-rate">Bot rate <span id="bot-rate-val">7/s</span></label>
+    <input id="bot-rate" type="range" min="1" max="20" value="7" />
+    <p class="fine">Test and demo events are tagged and never count as live. Bots are disabled in live mode.</p>
+  </aside>
+</div>
+
+  <script src="./vendor/three.min.js"></script>
+  <script src="./src/game.js"></script>
+
+</body>
+</html>
