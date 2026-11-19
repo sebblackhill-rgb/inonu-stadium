@@ -18,7 +18,7 @@ async function page(b, q, opts = {}) {
 (async () => {
   const b = await puppeteer.launch({ executablePath: '/usr/bin/google-chrome', headless: 'new', protocolTimeout: 600000, args: ARGS });
   /* ---------- deterministic suite (clip mode = manual time stepping) ---------- */
-  const p = await page(b, '?clip=1');
+  const p = await page(b, '?clip=1&rskip=10');
   await p.evaluate(() => { window.S = (sec) => __step(Math.round(sec * 30), 1 / 30); window.E = (o) => handleLiveEvent(o); __seedCrowd(40); S(2); shotCooldown = 1e9; });
 
   // P4 word matching
@@ -59,6 +59,9 @@ async function page(b, q, opts = {}) {
   ok('P3 unassigned like/gift/comment: no seat, no boost to either side', un.noFan && un.noBoost, JSON.stringify({ noFan: un.noFan, noBoost: un.noBoost }));
   ok('P3 unassigned contribution is held and they get a pick-team prompt', un.held && un.prompt, un.promptText);
   ok('P3 held gift/likes go to the team they pick ("2" → away)', un.joinedAway && un.applied);
+  const relang = await p.evaluate(() => { const L = l => { CONFIG.lang = l; applyLang(); }; pickFlushT = -9; E({ type: 'like', userId: 'relang', username: 'relang', likeCount: 5 }); S(0.1);
+    const tr = document.getElementById('prompt').textContent; L('en'); const en = document.getElementById('prompt').textContent; L('tr'); return { tr, en, back: document.getElementById('prompt').textContent }; });
+  ok('E10 a visible pick-team prompt is re-rendered when the language is switched', /takımını/.test(relang.tr) && /pick a team/.test(relang.en) && relang.back === relang.tr, JSON.stringify(relang));
 
   // P1 penalty promised during a natural goal celebration
   const pen = await p.evaluate(() => {

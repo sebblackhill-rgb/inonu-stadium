@@ -38,6 +38,11 @@
   "pass": true
  },
  {
+  "name": "E10 a visible pick-team prompt is re-rendered when the language is switched",
+  "pass": true,
+  "info": "{\"tr\":\"@relang: önce takımını seç → 1 = EV · 2 = DEP\",\"en\":\"@relang: pick a team first → 1 = HOME · 2 = AWAY\",\"back\":\"@relang: önce takımını seç → 1 = EV · 2 = DEP\"}"
+ },
+ {
   "name": "P1 Lion gift during a goal celebration queues a penalty",
   "pass": true,
   "info": "phase after goal: celebrate"
@@ -129,29 +134,54 @@
   "info": "{\"match\":\"🥇 nehir_n / 6\",\"night\":\"🥇 derya.d / 70 / 🥈 zeynep.fan / 60 / 🥉 baris.t / 60 / 4. arda_g / 60\"}"
  },
  {
+  "name": "Pass2 C1 gift streaks: duplicates/late lower counts add nothing (1,2,5,5,4 → 5); with streak ids = final counts (6+2=8); singles feed and new combos still count",
+  "pass": true,
+  "info": "{\"noId\":5,\"withId\":8,\"singles\":4,\"newCombo\":5}"
+ },
+ {
+  "name": "Pass2 C2 60 s of continuous liking earns exactly the documented 3 pts/min (no activity points)",
+  "pass": true,
+  "info": "points: 3"
+ },
+ {
+  "name": "Pass2 C4 \"gift counted\" line only when a held gift was actually applied (expired → no line)",
+  "pass": true,
+  "info": "{\"expiredLine\":0,\"freshLine\":1}"
+ },
+ {
+  "name": "Pass2 C5 a viewer who joined inside the prompt window is not named in the prompt",
+  "pass": true,
+  "info": "@late2: hediyen bekliyor → 1 ya da 2 yaz!"
+ },
+ {
+  "name": "Pass2 D2 gift-penalty conversion follows chant (60 % silent … 90 % full)",
+  "pass": true,
+  "info": "[60,90]"
+ },
+ {
   "name": "Join log batched (12 joins → ≤2 lines)",
-  "pass": false,
-  "info": "+6 DEPLASMAN: @batch0, @batch2 +4 / +6 EV SAHİBİ: @batch1, @batch3 +4 / ✅ “1” = EV SAHİBİ tribünü"
+  "pass": true,
+  "info": "+6 DEPLASMAN: @batch0, @batch2 +4 / +6 EV SAHİBİ: @batch1, @batch3 +4"
  },
  {
   "name": "Repeated gifts batched into one ticker line with a counter",
   "pass": true,
-  "info": "🎁 @mert1903 · Rose x24"
+  "info": "🎁 @mert1903 · Rose x22"
  },
  {
   "name": "D1 name labels capped at 10 and non-overlapping",
   "pass": true,
-  "info": "{\"n\":9,\"ov\":0}"
+  "info": "{\"n\":10,\"ov\":0}"
  },
  {
   "name": "Goal chance from chant shown on the meter",
   "pass": true,
-  "info": "🔥 79%\n⚽ %72"
+  "info": "🔥 71%\n⚽ %67"
  },
  {
   "name": "C10 a silent stadium never shoots (60 s at 0% chant = 0 shots), a loud one does",
   "pass": true,
-  "info": "{\"quiet\":0,\"loud\":4}"
+  "info": "{\"quiet\":0,\"loud\":17}"
  },
  {
   "name": "Demo joins capped",
@@ -179,9 +209,14 @@
   "info": ""
  },
  {
+  "name": "Pass2 C3 two same-origin instances: stored series counts both matches and neither overwrites the other",
+  "pass": true,
+  "info": "{\"base\":{\"home\":3,\"away\":0,\"draw\":2},\"stored\":{\"home\":4,\"away\":1,\"draw\":2},\"shown\":{\"home\":4,\"away\":1,\"draw\":2}}"
+ },
+ {
   "name": "E3 failed bridge retries with a growing backoff, stops after 5 tries, then offers tap-to-retry",
-  "pass": false,
-  "info": "{\"tries\":5,\"gaps\":[772,507,1502,3002],\"tap\":true,\"st\":\"fail\",\"txt\":\"⚠️ TikTok LIVE bağlanamadı — yorumlar gelmiyor · tekrar denemek için dokun\"} | mid: ⚠️ TikTok LIVE bağlanamadı — yorumlar gelmiyor · 1 sn sonra tekrar (1/5)"
+  "pass": true,
+  "info": "{\"tries\":5,\"gaps\":[250,500,1500,3000],\"tap\":true,\"st\":\"fail\",\"txt\":\"⚠️ TikTok LIVE bağlanamadı — yorumlar gelmiyor · tekrar denemek için dokun\"} | mid: ⚠️ TikTok LIVE bağlanamadı — yorumlar gelmiyor · 1 sn sonra tekrar (1/5)"
  },
  {
   "name": "E3 after the bridge comes back, tapping retry connects",
@@ -190,23 +225,23 @@
  },
  {
   "name": "E2 ?sound=1 before any gesture shows 🔇 + hint; first click anywhere → 🔊 and running",
-  "pass": false,
-  "info": "{\"e2a\":{\"st\":\"running\",\"icon\":\"🔊\",\"pill\":\"none\"},\"e2b\":{\"st\":\"running\",\"ctx\":\"running\",\"icon\":\"🔊\"}}"
+  "pass": true,
+  "info": "{\"e2a\":{\"st\":\"suspended\",\"icon\":\"🔇\",\"pill\":\"block\"},\"e2b\":{\"st\":\"running\",\"ctx\":\"running\",\"icon\":\"🔊\"}}"
  },
  {
   "name": "E2 ?live=1&sound=1: first key press resumes sound without needing M",
-  "pass": false,
-  "info": "{\"before\":\"running\",\"after\":{\"ctx\":\"running\",\"icon\":\"🔊\"}}"
+  "pass": true,
+  "info": "{\"before\":\"suspended\",\"after\":{\"ctx\":\"running\",\"icon\":\"🔊\"}}"
  },
  {
   "name": "E10 English mode: no Turkish chrome anywhere (start screen, panel, HUD, legend)",
   "pass": true,
-  "info": "KARTALLAR | 20 fans | 0 - 0 | 0' | VISITORS | 20 fans | İNÖNÜ STADIUM · ISTANBUL | MATCH 1 · SERIES 2-0 (2🤝) | 📣 0% | ⚽ 10% | MOMENTUM | 📣 0% | ⚽ 10% | 🎤 THIS MATCH | 🍾 HOME 0/3 → VERBAL WARNING "
+  "info": "KARTALLAR | 20 fans | 0 - 0 | 0' | VISITORS | 20 fans | İNÖNÜ STADIUM · ISTANBUL | MATCH 1 · SERIES 4-1 (2🤝) | 📣 0% | ⚽ 10% | MOMENTUM | 📣 0% | ⚽ 10% | 🎤 THIS MATCH | 🍾 HOME 0/3 → VERBAL WARNING "
  },
  {
   "name": "E10 Turkish mode: no English chrome left (gift names/API excepted)",
   "pass": true,
-  "info": "KARTALLAR | 20 taraftar | 0 - 0 | 0' | MİSAFİR | 20 taraftar | İNÖNÜ STADI · İSTANBUL | MAÇ 1 · SERİ 2-0 (2🤝) | 📣 0% | ⚽ %10 | MOMENTUM | 📣 0% | ⚽ %10 | 🎤 BU MAÇ | 🍾 EV 0/3 → SÖZLÜ UYARI | 🍾 DEP"
+  "info": "KARTALLAR | 20 taraftar | 0 - 0 | 0' | MİSAFİR | 20 taraftar | İNÖNÜ STADI · İSTANBUL | MAÇ 1 · SERİ 4-1 (2🤝) | 📣 0% | ⚽ %10 | MOMENTUM | 📣 0% | ⚽ %10 | 🎤 BU MAÇ | 🍾 EV 0/3 → SÖZLÜ UYARI | 🍾 DEP"
  },
  {
   "name": "D5 PLAY is a real focused <button>; Enter starts the match",
@@ -229,9 +264,59 @@
   "info": ""
  },
  {
+  "name": "V1 11 v 11 on the pitch: 11 per team incl. 1 GK each, a referee and 2 linesmen, all 25 inside the ground",
+  "pass": true,
+  "info": "{\"home\":11,\"away\":11,\"gk\":2,\"refs\":1,\"linesmen\":2,\"formations\":{\"home\":\"4-4-2\",\"away\":\"4-3-3\"},\"kits\":{\"home\":{\"shirt\":null,\"sleeve\":1315860,\"shorts\":1118481,\"socks\":15921906},\"away\":{\"shirt\":null,\"sleeve\":11866651,\"shorts\":16053492,\"socks\":11866651},\"gkhome\":2085227,\"gkaway\":8076543,\"ref\":16769354},\"onPitch\":25,\"carrier\":\"home9\",\"passes\":0}"
+ },
+ {
+  "name": "V2 two distinct kits, goalkeepers and referee in their own colours; formations 4-4-2 vs 4-3-3",
+  "pass": true,
+  "info": "{\"cols\":[2085227,8076543,16769354,1315860,11866651],\"f\":{\"home\":\"4-4-2\",\"away\":\"4-3-3\"}}"
+ },
+ {
+  "name": "V3 the ball is played around: passes happen and someone carries the ball",
+  "pass": true,
+  "info": "{\"passes\":9,\"carriedSamples\":19}"
+ },
+ {
+  "name": "V4 a goal triggers paper rain, then a slow-mo replay that ends before the restart",
+  "pass": true,
+  "info": "{\"goal\":1,\"paper\":1,\"replays\":1,\"mid\":{\"phase\":\"celebrate\",\"rp\":false},\"inRp\":true,\"after\":false,\"phase\":\"play\"}"
+ },
+ {
+  "name": "V5 Mexican wave runs around the stands",
+  "pass": true,
+  "info": "{\"waves\":1,\"front\":-15.999999999999204}"
+ },
+ {
+  "name": "V6 draw calls stay capped (< 300 per frame at high quality)",
+  "pass": true,
+  "info": "{\"calls\":237,\"q\":\"high\"}"
+ },
+ {
+  "name": "V no console errors in the visual checks",
+  "pass": true,
+  "info": ""
+ },
+ {
+  "name": "V7 quality auto-downgrades high → medium → low when fps < 30, stops at low, and does not flap back up",
+  "pass": true,
+  "info": "{\"q0\":\"high\",\"seen\":[\"high\",\"med\",\"low\",\"low\",\"low\"],\"fps\":60,\"log\":2,\"pr\":0.75}"
+ },
+ {
+  "name": "V8 low quality renders with fewer/equal draw calls than high",
+  "pass": true,
+  "info": "{\"low\":233}"
+ },
+ {
+  "name": "V9 ?q=low locks quality (no auto changes)",
+  "pass": true,
+  "info": "{\"q\":\"low\"}"
+ },
+ {
   "name": "E6 30-min bot soak: fan count plateaus at the cap, unique names with no recycled _N suffix, no slowdown trend",
   "pass": true,
-  "info": "{\"n10\":70,\"n30\":70,\"cap\":70,\"t10\":2,\"t30\":2.3,\"dup\":0,\"suffixed\":[],\"matches\":10}"
+  "info": "{\"n10\":70,\"n30\":70,\"cap\":70,\"t10\":2.1,\"t30\":0.9,\"dup\":0,\"suffixed\":[],\"matches\":10}"
  },
  {
   "name": "No console errors during soak",
@@ -261,6 +346,11 @@
  {
   "name": "Emulated iPhone 13: tap PLAY, game runs, no console errors",
   "pass": true,
-  "info": "{\"phase\":\"celebrate\",\"users\":47,\"v\":\"inonu-v3\",\"audio\":\"running\"} "
+  "info": "{\"phase\":\"play\",\"users\":46,\"v\":\"inonu-v5\",\"audio\":\"running\",\"fps\":6.3,\"quality\":\"low\",\"calls\":306,\"people\":25} "
+ },
+ {
+  "name": "V10 emulated iPhone: 25 people on the pitch, fps measured, and quality stepped down if fps < 30",
+  "pass": true,
+  "info": "{\"fps\":6.3,\"quality\":\"low\",\"calls\":306}"
  }
 ]
