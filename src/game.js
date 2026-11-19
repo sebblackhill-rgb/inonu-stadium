@@ -248,7 +248,8 @@ state.gustUntil = 0; state.gustsDone = 0;
 window.__game = state;
 // heave multiplier: ?speed=N wins; live TikTok mode is 1x; the bot demo / shared link uses CONFIG.demoSpeed
 // ?speed is validated: finite and 0.1..100, otherwise the default is used (bad links can't break pacing)
-const SPEED = (() => { const q = new URLSearchParams(location.search); const raw = q.get("speed"); const v = Number(raw); if (raw != null && raw !== "" && isFinite(v) && v >= 0.1 && v <= 100) return v; return q.get("live") === "1" ? 1 : CONFIG.demoSpeed; })();
+const SPEED = (() => { const q = new URLSearchParams(location.search); if (q.get("live") === "1") return 1; // paid audience pacing is never URL-adjustable
+  const raw = q.get("speed"); const v = Number(raw); if (raw != null && raw !== "" && Number.isFinite(v) && v >= 0.1 && v <= 100) return v; return CONFIG.demoSpeed; })();
 if (new URLSearchParams(location.search).get("calm") === "1") CONFIG.calmEffects = true;
 window.__speed = SPEED;
 window.CONFIG = CONFIG;
@@ -2769,12 +2770,22 @@ function advanceClock(now) {
   state.time += gameSeconds;
   return gameSeconds;
 }
+// Low FPS must not make a 1.4-second delivery take 5.6 wall seconds.
+function advanceBuildLogic(elapsed) {
+  if (!Number.isFinite(elapsed) || elapsed <= 0 || state.paused || state.phase !== "build") return 0;
+  // Substep team gameplay without rendering; bound work after a sleeping-PC gap.
+  const simulated = Math.min(elapsed, 10);
+  const count = Math.ceil(simulated / 0.05);
+  const slice = simulated / count;
+  for (let i = 0; i < count && state.phase === "build"; i++) updateTeams(slice);
+  return simulated;
+}
 function tick(now) {
   const elapsed = advanceClock(now);
-  const dt = Math.min(0.05, elapsed); // animation remains bounded for stability
+  const dt = Math.min(0.05, elapsed); // visual animation remains bounded for stability
   try {
     updatePhase();
-    updateTeams(dt);
+    advanceBuildLogic(elapsed);
     updateSledges(dt, state.time);
     updateLitters(state.time, dt);
     updatePeople(state.time, dt);
@@ -2798,7 +2809,7 @@ function tick(now) {
 setInterval(() => {
   if (!document.hidden) return;
   const elapsed = advanceClock(performance.now());
-  if (elapsed) updatePhase();
+  if (elapsed) { updatePhase(); advanceBuildLogic(elapsed); }
 }, 500);
 
 function boot() {
@@ -2819,7 +2830,14 @@ function boot() {
   $("btn-lion").addEventListener("click", () => handleLiveEvent(Object.assign({ type: "gift", giftName: "Lion", diamondCount: 1500 }, who())));
   chips.querySelectorAll("button").forEach((btn) => btn.addEventListener("click", () => { $("fake-comment").value = btn.dataset.fill; $("btn-send").click(); }));
   $("bot-rate").addEventListener("input", () => { $("bot-rate-val").textContent = $("bot-rate").value + "/s"; });
-  $("bot-toggle").addEventListener("change", () => { if ($("bot-toggle").checked) startBot(); else stopBot(); });
+  $("bot-toggle").addEventListener("change", () => {
+    if (state.mode === "live") {
+      $("bot-toggle").checked = false; stopBot();
+      console.warn("[LIVE] Demo bots cannot run during a LIVE session");
+      return;
+    }
+    if ($("bot-toggle").checked) startBot(); else stopBot();
+  });
   window.addEventListener("keydown", (e) => {
     if (e.target && /input|textarea/i.test(e.target.tagName)) return;
     if (e.key === "h" || e.key === "H") { document.body.classList.toggle("panel-hidden"); fit(); }
