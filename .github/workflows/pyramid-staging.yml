@@ -16,6 +16,21 @@ jobs:
       - run: node --check src/game.js
       - run: node --check vendor/three.min.js
       - run: node --test tests/*.test.mjs
+      - name: Preserve exact tested Pyramid staging source for export
+        uses: actions/upload-artifact@v4
+        with:
+          name: pyramid-stabilized-source
+          path: |
+            .nojekyll
+            index.html
+            styles.css
+            src/
+            vendor/
+            archive/
+            tests/
+            README.md
+            SOURCE-MANIFEST.json
+          retention-days: 30
   browser:
     runs-on: ubuntu-latest
     timeout-minutes: 9
