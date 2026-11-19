@@ -82,7 +82,17 @@ function flushJoins() {
 }
 const pickBuf = new Map(); let pickFlushT = 0, promptT = -9, promptDur = 0; const pickSeen = new Map();
 let promptMake = null;   // rebuilt on language switch so a visible prompt never stays in the old language
-function askPick(id, name, held) { const last = pickSeen.get(id) || -99; if (state.time - last < 8 && !held) return; pickSeen.set(id, state.time); pickBuf.set(id, { name, held: held || (pickBuf.get(id) || {}).held }); }
+function askPick(id, name, held) {
+  const last = pickSeen.get(id) ?? -99;
+  if (state.time - last < 8 && !held) return;
+  pickSeen.set(id, state.time);
+  // Prevent multi-hour streams from accumulating an unbounded prompt cooldown map.
+  if (pickSeen.size > 4000) {
+    for (const [key, t] of pickSeen) if (state.time - t > 120) pickSeen.delete(key);
+    while (pickSeen.size > 4000) pickSeen.delete(pickSeen.keys().next().value);
+  }
+  pickBuf.set(id, { name, held: held || (pickBuf.get(id) || {}).held });
+}
 function flushPicks() {
   if (!pickBuf.size || state.time - pickFlushT < 2.6) return; pickFlushT = state.time;
   const arr = [...pickBuf.entries()].filter(([id]) => !users.has(id)).map(e => e[1]); pickBuf.clear();   // viewers who joined meanwhile are not nagged
@@ -131,27 +141,68 @@ function refereeWarning(team, lvl) {
   cardT = state.time;
 }
 function joinFan(id, name, team) {
-  const f = addFan(id, name, team); if (!f) return null;
+  const f = addFan(id, name, team);
+  if (!f) {
+    // A full stand must provide visible feedback instead of silently rejecting a viewer.
+    logLine(CONFIG.lang === "tr" ? "Tribün dolu · diğer takımı deneyin" : "Stand full · try the other team", team);
+    return null;
+  }
   joinBuf[team].push(name); addChant(team, 2);
   const p = pending.get(id);
   if (p) { pending.delete(id);
     if (p.likes) { fanChant(f, Math.min(10, 0.5 * p.likes), "", true); hearts.push({ f, t: 0 }); }
-    const live = p.gifts.filter(g => state.time - g.t < 180); live.forEach(g => applyGift(f, g.val, g.unit, g.giftName, 1));
-    if (live.length) logLine(T("heldApplied", { n: name, t: tShort(team) }), team);
+    // Gift recognition does not expire with the temporary gameplay effect.
+    // Older gift effects are intentionally not replayed onto the current match.
+    let credited = 0, actionExpired = 0;
+    p.gifts.forEach(g => {
+      if (state.time - g.t < 180) {
+        applyGift(f, g.val, g.unit, g.giftName, g.count || 1);
+      } else {
+        f.gifts += g.val;
+        f.mGiftD += g.val;
+        const P = CONFIG.points;
+        const newPoints = Math.min(P.giftCapPerMatch, P.giftK * Math.sqrt(f.mGiftD));
+        addPts(f, newPoints - f.mGiftPts);
+        f.mGiftPts = newPoints;
+        actionExpired++;
+      }
+      credited += g.val;
+    });
+    if (credited) {
+      logLine(T("heldApplied", { n: name, t: tShort(team) }), team);
+      if (actionExpired) logLine(CONFIG.lang === "tr"
+        ? "@" + name + " · eski hediyeler sayıldı (efekt süresi doldu)"
+        : "@" + name + " · older gifts credited (effects expired)", team);
+    }
   }
   return f;
 }
 function holdForUnassigned(id, name, like, gift) {
   const p = pending.get(id) || { name, likes: 0, gifts: [], t: state.time };
   if (like) p.likes = Math.min(50, p.likes + like);
-  if (gift) { p.gifts.push(Object.assign({ t: state.time }, gift)); if (p.gifts.length > 5) p.gifts.shift(); }
+  if (gift) p.gifts.push(Object.assign({ t: state.time }, gift)); // never truncate recognized gift credit
   p.t = state.time; pending.set(id, p);
-  if (pending.size > 400) { const oldest = [...pending.entries()].sort((a, b) => a[1].t - b[1].t)[0]; pending.delete(oldest[0]); }
+  // Bound unassigned free activity without evicting someone whose gift is awaiting a team.
+  // Gift-bearing pending entries survive until claimed or the session ends.
+  if (pending.size > 400) {
+    const free = [...pending.entries()].filter(([, rec]) => rec.gifts.length === 0);
+    free.sort((a, b) => a[1].t - b[1].t);
+    for (const [key] of free) {
+      if (pending.size <= 400) break;
+      pending.delete(key);
+    }
+  }
   askPick(id, name, !!gift);
+}
+// Strict defensive counts: invalid values must not propagate NaN into chant or ball physics.
+function safePositiveCount(v, max) {
+  return typeof v === "number" && Number.isSafeInteger(v) && v >= 1 && v <= max ? v : null;
 }
 window.handleLiveEvent = function (ev) {
   try {
     if (!ev) return;
+    if (Q.get("live") === "1" && ev.source === "host" && Q.get("host") !== "1") return;
+    if (ev.source === "tiktok" && !ev.userId) return; // no shared anonymous paid-credit identity
     lastLiveEvt = state.time;
     const id = String(ev.userId || ev.uniqueId || ev.username || "anon"), name = String(ev.username || ev.nickname || id).replace(/^@/, "").slice(0, 18);
     let f = users.get(id);
@@ -168,7 +219,11 @@ window.handleLiveEvent = function (ev) {
       if (state.time - f.likeWinT > 60) { f.likeWinT = state.time; f.likeWin = 0; }
       const pts = Math.min(CONFIG.points.likeCapPerMin - f.likeWin, CONFIG.points.likePts * n); if (pts > 0) { f.likeWin += pts; addPts(f, pts); }
     } else if (ev.type === "gift") {
-      const unit = Number(ev.diamondCount || ev.giftValue) || 1, gname = String(ev.giftName || "gift");
+      const unit = safePositiveCount(ev.diamondCount ?? ev.giftDiamondCount ?? ev.giftValue, 1000000);
+      const repeats = safePositiveCount(ev.repeatCount ?? 1, 100000);
+      if (unit === null || repeats === null) { console.warn("[LIVE] rejected malformed gift value"); return; }
+      const gname = String(ev.giftName || "gift").slice(0, 128);
+      // Streak settlement still requires a confirmed real provider contract.
       // streaks: repeatCount may be cumulative while a combo is running -> only count the new part
       const delta = streakDelta(id, gname, ev);
       if (delta <= 0) return;
@@ -492,7 +547,7 @@ async function tryConnectPlayroom(manual) {
   clearTimeout(liveTimer); liveRetryAt = 0; liveTry++; window.__liveAttempts.push(performance.now());
   setLive("connecting");
   try {
-    const src = window.__bridgeSrc || Q.get("bridgeSrc") || "https://unpkg.com/playroomkit/multiplayer.js";
+    const src = window.__bridgeSrc || Q.get("bridgeSrc") || "https://cdn.joinplayroom.com/playroomkit/multiplayer.full.umd.js";
     document.querySelectorAll("script[data-bridge]").forEach(s => s.remove());
     await new Promise((res, rej) => { const s = document.createElement("script"); s.dataset.bridge = "1"; s.src = src; s.onload = res; s.onerror = () => rej(new Error("bridge script failed to load")); document.head.appendChild(s); setTimeout(() => rej(new Error("bridge load timeout")), 20000); });
     const mod = window.Playroom || window.PlayroomKit || window;
@@ -500,10 +555,25 @@ async function tryConnectPlayroom(manual) {
     if (typeof insertCoin !== "function" || typeof onTikTokLiveEvent !== "function") throw new Error("Playroom API not found");
     await Promise.race([insertCoin({ liveMode: "tiktok" }), new Promise((_, rej) => setTimeout(() => rej(new Error("insertCoin timeout")), 60000))]);
     if (!liveHooked) { liveHooked = true;
-    onTikTokLiveEvent((event) => { const d = (event && event.data) || event || {}; const raw = String((event && event.type) || d.type || "chat").toLowerCase();
+    onTikTokLiveEvent((event) => {
+      const d = (event && event.data) || {}, raw = String((event && event.type) || "").toLowerCase();
+      if (!["gift", "chat", "like"].includes(raw)) return; // follows/shares must not become free chants
+      if (!d.userId) { console.warn("[LIVE] ignored event without stable viewer ID"); return; }
+      const mapped = {
+        type: raw, source: "tiktok",
+        eventId: d.msgId || d.eventId || null,
+        userId: String(d.userId),
+        username: d.name || d.username || d.nickName || d.uniqueId || "viewer",
+        comment: d.comment || d.content || "",
+        giftName: d.giftName || "",
+        diamondCount: d.giftDiamondCount ?? d.diamondCount ?? d.giftValue,
+        repeatCount: d.repeatCount ?? 1,
+        likeCount: d.likeCount ?? 1,
+        streakId: d.streakId || d.comboId || d.groupId || ""
+      };
+      handleLiveEvent(mapped);
       if (liveState !== "ok") setLive("ok");
-      handleLiveEvent({ type: raw.includes("gift") ? "gift" : raw.includes("like") ? "like" : "chat", userId: d.userId || d.uniqueId || d.username, username: d.username || d.nickName || d.uniqueId || "viewer",
-        comment: d.comment || d.content || "", giftName: d.giftName || "", diamondCount: d.diamondCount || d.giftValue || 1, repeatCount: d.repeatCount || 1, likeCount: d.likeCount || 1, streakId: d.streakId || d.comboId || d.groupId || "" }); });
+    });
     if (typeof onDisconnect === "function") onDisconnect(() => setLive("lost"));
     window.addEventListener("offline", () => setLive("lost")); }
     liveConnectedAt = state.time; setLive("ok");
@@ -612,13 +682,13 @@ function boot() {
   claimWriter(); logLine(T("rivalTonight", { t: tName("away") }));
   camera.up.set(1, 0, 0); camera.position.set(CAMX, CAMY, 0); camTarget.set(LOOKX, 0, 0); camera.lookAt(camTarget);
   const who = () => { const n = $("fake-user").value.trim() || "pablo"; return { userId: "local:" + n.toLowerCase(), username: n }; };
-  $("btn-send").onclick = () => handleLiveEvent(Object.assign({ type: "chat", comment: $("fake-comment").value }, who()));
+  $("btn-send").onclick = () => handleLiveEvent(Object.assign({ source: "host", type: "chat", comment: $("fake-comment").value }, who()));
   $("fake-comment").addEventListener("keydown", e => { if (e.key === "Enter") $("btn-send").click(); });
-  $("btn-like").onclick = () => handleLiveEvent(Object.assign({ type: "like", likeCount: 5 }, who()));
-  $("btn-rose").onclick = () => handleLiveEvent(Object.assign({ type: "gift", giftName: "Rose", diamondCount: 1 }, who()));
-  $("btn-med").onclick = () => handleLiveEvent(Object.assign({ type: "gift", giftName: "Donut", diamondCount: 30 }, who()));
-  $("btn-big").onclick = () => handleLiveEvent(Object.assign({ type: "gift", giftName: "Party", diamondCount: 300 }, who()));
-  $("btn-lion").onclick = () => handleLiveEvent(Object.assign({ type: "gift", giftName: "Lion", diamondCount: 1500 }, who()));
+  $("btn-like").onclick = () => handleLiveEvent(Object.assign({ source: "host", type: "like", likeCount: 5 }, who()));
+  $("btn-rose").onclick = () => handleLiveEvent(Object.assign({ source: "host", type: "gift", giftName: "Rose", diamondCount: 1 }, who()));
+  $("btn-med").onclick = () => handleLiveEvent(Object.assign({ source: "host", type: "gift", giftName: "Donut", diamondCount: 30 }, who()));
+  $("btn-big").onclick = () => handleLiveEvent(Object.assign({ source: "host", type: "gift", giftName: "Party", diamondCount: 300 }, who()));
+  $("btn-lion").onclick = () => handleLiveEvent(Object.assign({ source: "host", type: "gift", giftName: "Lion", diamondCount: 1500 }, who()));
   $("bot-rate").oninput = () => { $("bot-rate-val").textContent = $("bot-rate").value + "/s"; };
   $("bot-toggle").onchange = () => setBot($("bot-toggle").checked);
   $("mute").onclick = (e) => { e.stopPropagation(); if (!state.muted && audioState() !== "running") setMuted(false); else setMuted(!state.muted); };
