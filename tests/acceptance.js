@@ -295,6 +295,39 @@ async function page(b, q, opts = {}) {
   ok('D7 "?" opens a help overlay documenting keys and URL params', d7.on && ['?clip=1', '?demo=0', '?sound=1', '?seed=N', '?panel=0', '?help=1'].every(k => d7.txt.includes(k)), d7.txt.split('\n').slice(0, 4).join(' / '));
   ok('No page errors in translation/pause/help run', tl.errs.length === 0, tl.errs.join(' | '));
   await tl.close();
+  /* ---------- V: visual upgrade (11v11, officials, passes, goal FX, replay, crowd, quality fallback) ---------- */
+  const vp = await page(b, '?clip=1&demo=0');
+  const v1 = await vp.evaluate(() => { __seedCrowd(60); __step(60, 1 / 30); return __people(); });
+  const k = v1.kits, cols = [k.gkhome, k.gkaway, k.ref, k.home.sleeve, k.away.sleeve];
+  ok('V1 11 v 11 on the pitch: 11 per team incl. 1 GK each, a referee and 2 linesmen, all 25 inside the ground', v1.home === 11 && v1.away === 11 && v1.gk === 2 && v1.refs === 1 && v1.linesmen === 2 && v1.onPitch === 25, JSON.stringify(v1));
+  ok('V2 two distinct kits, goalkeepers and referee in their own colours; formations 4-4-2 vs 4-3-3', new Set(cols).size === cols.length && v1.formations.home === '4-4-2' && v1.formations.away === '4-3-3', JSON.stringify({ cols, f: v1.formations }));
+  const v3 = await vp.evaluate(() => { const p0 = __people().passes; __state.chant.home = 60; __state.chant.away = 40; let carried = 0; for (let i = 0; i < 30; i++) { __step(20, 1 / 30); if (__people().carrier) carried++; } const P = __people(); return { passes: P.passes - p0, carriedSamples: carried }; });
+  ok('V3 the ball is played around: passes happen and someone carries the ball', v3.passes >= 3 && v3.carriedSamples >= 5, JSON.stringify(v3));
+  const v4 = await vp.evaluate(() => { const r0 = window.__replays || 0, pr0 = window.__paperRains || 0, g0 = __state.goals.home;
+    shotCooldown = 1e9; __state.phase = 'play'; __state.ballZ = -13; shoot('home', true); __step(60, 1 / 30); const mid = { phase: __state.phase, rp: document.getElementById('replay').classList.contains('on') };
+    __step(45, 1 / 30); const inRp = document.getElementById('replay').classList.contains('on'); __step(150, 1 / 30);
+    return { goal: __state.goals.home - g0, paper: (window.__paperRains || 0) - pr0, replays: (window.__replays || 0) - r0, mid, inRp, after: document.getElementById('replay').classList.contains('on'), phase: __state.phase }; });
+  ok('V4 a goal triggers paper rain, then a slow-mo replay that ends before the restart', v4.goal === 1 && v4.paper === 1 && v4.replays === 1 && v4.inRp && !v4.after && v4.phase === 'play', JSON.stringify(v4));
+  const v5 = await vp.evaluate(() => { const w0 = window.__mexWaves || 0; startMexWave(); __step(30, 1 / 30); const front = mexFront(); return { waves: (window.__mexWaves || 0) - w0, front }; });
+  ok('V5 Mexican wave runs around the stands', v5.waves === 1 && v5.front !== null, JSON.stringify(v5));
+  const v6 = await vp.evaluate(() => ({ calls: __calls, q: __quality }));
+  ok('V6 draw calls stay capped (< 300 per frame at high quality)', v6.calls > 0 && v6.calls < 300, JSON.stringify(v6));
+  ok('V no console errors in the visual checks', vp.errs.length === 0, vp.errs.slice(0, 3).join(' | '));
+  await vp.close();
+  const qp = await page(b, '?demo=0');
+  await sleep(1500);
+  const v7 = await qp.evaluate(() => { const q0 = __quality; Object.assign(QUAL, { downs: 0, acc: 0, frames: 0, lowWin: 0, highWin: 0 }); applyQuality(2); const seen = [__quality];
+    for (let s = 0; s < 3; s++) { for (let i = 0; i < 90; i++) __qualityMonitor(1 / 20); seen.push(__quality); }   // inject 20 fps for ~4.5 s windows
+    for (let i = 0; i < 900; i++) __qualityMonitor(1 / 60); seen.push(__quality);                                     // fast again: must not flap back up
+    return { q0, seen, fps: __fps, log: [...document.querySelectorAll('#log *')].map(e => e.textContent).filter(t => t.includes('⚙️')).length, pr: renderer.getPixelRatio() }; });
+  ok('V7 quality auto-downgrades high → medium → low when fps < 30, stops at low, and does not flap back up', v7.seen.join() === 'high,med,low,low,low' && v7.pr <= 0.75, JSON.stringify(v7));
+  const v8 = await qp.evaluate(() => { applyQuality(0); return new Promise(res => setTimeout(() => res({ low: __calls }), 600)); });
+  ok('V8 low quality renders with fewer/equal draw calls than high', v8.low <= v6.calls, JSON.stringify(v8));
+  await qp.close();
+  const lk = await page(b, '?demo=0&q=low'); await sleep(1200);
+  const v9 = await lk.evaluate(() => { for (let i = 0; i < 300; i++) __qualityMonitor(1 / 10); return { q: __quality }; });
+  ok('V9 ?q=low locks quality (no auto changes)', v9.q === 'low', JSON.stringify(v9)); await lk.close();
+
   /* ---------- E6 soak: ?bot=1 at 8/s for 30 simulated minutes ---------- */
   const sk = await page(b, '?clip=1&demo=0');
   const e6 = await sk.evaluate(() => { setBot(true); document.getElementById('bot-rate').value = 8;
@@ -324,9 +357,10 @@ async function page(b, q, opts = {}) {
   /* ---------- emulated phone ---------- */
   const ph = await page(b, '', { phone: true });
   await sleep(1500); await ph.tap('#start'); await sleep(16000);
-  const phs = await ph.evaluate(() => ({ phase: __state.phase, users: __users.size, v: CONFIG.version, audio: window.__audioState }));
+  const phs = await ph.evaluate(() => ({ phase: __state.phase, users: __users.size, v: CONFIG.version, audio: window.__audioState, fps: window.__fps, quality: window.__quality, calls: window.__calls, people: __people().onPitch }));
   await ph.screenshot({ path: '/workspace/inonu-stadium/screenshot-phone.png' });
   ok('Emulated iPhone 13: tap PLAY, game runs, no console errors', ph.errs.length === 0 && phs.users > 20, JSON.stringify(phs) + ' ' + ph.errs.slice(0, 3).join(' | '));
+  ok('V10 emulated iPhone: 25 people on the pitch, fps measured, and quality stepped down if fps < 30', phs.people === 25 && phs.fps > 0 && (phs.fps >= 30 || phs.quality !== 'high'), JSON.stringify({ fps: phs.fps, quality: phs.quality, calls: phs.calls }));
   await ph.close();
   await b.close();
   const f = results.filter(r => !r.pass).length; console.log(`\n${results.length - f}/${results.length} passed`);
