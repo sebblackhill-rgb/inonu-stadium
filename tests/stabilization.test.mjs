@@ -58,3 +58,23 @@ test('bundle, phase and hidden-tab fixes remain in source',()=>{
  assert(source.includes('if (state.phase !== "build") return; // never double-book'));
  assert(source.includes('if (!document.hidden) return;'));
 });
+
+test('gifted viewer #20,001 is retained without allocating a render avatar',()=>{
+ const viewers=new Map();
+ for(let i=0;i<20000;i++) viewers.set('assigned'+i,{id:'assigned'+i,team:'sun',diamonds:0,pending:[]});
+ const c=context(section('function getOrMakeUser(userId, username, photoUrl, src, preserveGiftCredit = false) {','function assignTeam(u, team) {'),{
+   state:{users:viewers},CONFIG:{maxParticipants:20000,giftOverflowReserve:2000},
+   performance:{now:()=>100000},
+   makeUser:(id,name)=>({id,name,team:null,diamonds:0,pending:[],inst:-1})
+ });
+ assert.equal(c.getOrMakeUser('free','Free',null,'test'),null);
+ const gift=c.getOrMakeUser('giver20001','Giver',null,'live',true);
+ assert.equal(gift?.id,'giver20001');assert.equal(gift?.inst,-1);
+ assert.equal(viewers.size,20001);
+});
+test('closed build phase ignores duplicate late delivery',()=>{
+ const state={phase:'race',teams:{sun:{blocks:1,delivered:10}}};
+ const c=context(section('function blocksPlaced(id, n) {','function layerPlaced(id, n) {'),{state});
+ c.blocksPlaced('sun',10);
+ assert.equal(state.teams.sun.blocks,1);assert.equal(state.teams.sun.delivered,10);
+});
