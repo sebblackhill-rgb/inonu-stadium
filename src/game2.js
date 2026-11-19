@@ -25,18 +25,31 @@ function buildSky() {
 }
 
 function buildPitch() {
-  const tex = canvasTex(512, 760, (g, w, h) => {
-    const mx = 512 / 40, mz = 760 / 60;           // px per unit; plane 40 x 60
-    for (let i = 0; i < 14; i++) { g.fillStyle = i % 2 ? "#3f9a3a" : "#48a843"; g.fillRect(0, i * h / 14, w, h / 14 + 1); }
-    g.strokeStyle = "rgba(255,255,255,.92)"; g.lineWidth = 3;
-    const X = x => (x + 20) * mx, Z = z => (z + 30) * mz;
-    g.strokeRect(X(-PW), Z(-PL), 2 * PW * mx, 2 * PL * mz);
+  // real proportions scaled to this 20 x 36 pitch: penalty box 11.9 x 5.7, goal area 8.4 x 1.9, spot 3.9, circle/arc r 3.14, corner arcs
+  const hiq = !IS_MOBILE || CLIP, PXU = hiq ? 25.6 : 16;
+  const tex = canvasTex(40 * PXU, 60 * PXU, (g, w, h) => {
+    const X = x => (x + 20) * PXU, Z = z => (z + 30) * PXU, U = v => v * PXU;
+    g.fillStyle = "#3d8f38"; g.fillRect(0, 0, w, h);
+    const bands = 18, bz = 2 * PL / bands;
+    for (let i = 0; i < 30; i++) { g.fillStyle = i % 2 ? "#47a443" : "#3e9639"; g.fillRect(0, Z(-30 + i * bz * (60 / (2 * PL)) * (2 * PL / 60)), w, U(bz) + 1); }
+    for (let i = -6; i < 6; i++) { g.fillStyle = i % 2 ? "rgba(255,255,255,.035)" : "rgba(0,0,0,.035)"; g.fillRect(X(i * PW / 3), 0, U(PW / 3), h); }   // cross-cut
+    for (let i = 0; i < 2500; i++) { g.fillStyle = Math.random() < 0.5 ? "rgba(0,0,0,.05)" : "rgba(255,255,255,.04)"; g.fillRect(Math.random() * w, Math.random() * h, 2, 2); }
+    g.strokeStyle = "rgba(255,255,255,.95)"; g.lineWidth = Math.max(2, U(0.12)); g.fillStyle = "#fff";
+    g.strokeRect(X(-PW), Z(-PL), U(2 * PW), U(2 * PL));
     g.beginPath(); g.moveTo(X(-PW), Z(0)); g.lineTo(X(PW), Z(0)); g.stroke();
-    g.beginPath(); g.arc(X(0), Z(0), 4.6 * mx, 0, Math.PI * 2); g.stroke();
-    [-1, 1].forEach(s => { g.strokeRect(X(-10), s < 0 ? Z(-PL) : Z(PL - 8.2), 20 * mx, 8.2 * mz); g.strokeRect(X(-4.6), s < 0 ? Z(-PL) : Z(PL - 2.8), 9.2 * mx, 2.8 * mz);
-      g.beginPath(); g.arc(X(0), Z(s * (PL - 5.5)), 4.6 * mx, s < 0 ? 0.2 * Math.PI : 1.2 * Math.PI, s < 0 ? 0.8 * Math.PI : 1.8 * Math.PI); g.stroke();
-      g.fillStyle = "#fff"; g.beginPath(); g.arc(X(0), Z(s * (PL - 5.5)), 3, 0, 7); g.fill(); });
-    g.fillStyle = "#fff"; g.beginPath(); g.arc(X(0), Z(0), 3, 0, 7); g.fill();
+    g.beginPath(); g.arc(X(0), Z(0), U(3.14), 0, Math.PI * 2); g.stroke();
+    g.beginPath(); g.arc(X(0), Z(0), U(0.18), 0, 7); g.fill();
+    [-1, 1].forEach(s => {
+      const gl = s * PL, inn = -s;
+      g.strokeRect(X(-5.93), s < 0 ? Z(gl) : Z(gl - 5.66), U(11.86), U(5.66));
+      g.strokeRect(X(-4.2), s < 0 ? Z(gl) : Z(gl - 1.9), U(8.4), U(1.9));
+      const spot = gl + inn * 3.9; g.beginPath(); g.arc(X(0), Z(spot), U(0.16), 0, 7); g.fill();
+      const th = Math.acos((5.66 - 3.9) / 3.14); g.beginPath();
+      if (s < 0) g.arc(X(0), Z(spot), U(3.14), Math.PI / 2 - th, Math.PI / 2 + th); else g.arc(X(0), Z(spot), U(3.14), -Math.PI / 2 - th, -Math.PI / 2 + th);
+      g.stroke();
+      [-1, 1].forEach(sx => { g.beginPath(); g.arc(X(sx * PW), Z(gl), U(0.5), 0, Math.PI * 2); g.stroke(); });
+    });
+    g.globalCompositeOperation = "destination-over";
   });
   const p = new THREE.Mesh(new THREE.PlaneGeometry(40, 60), lam(0xffffff, { map: tex })); p.rotation.x = -Math.PI / 2; scene.add(p);
   const track = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), lam(0x7a3326)); track.rotation.x = -Math.PI / 2; track.position.y = -0.02; scene.add(track);
