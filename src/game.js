@@ -385,6 +385,7 @@ function updateTeams(dt) {
   if (state.phase !== "build") return;
   const now = performance.now();
   for (const id of TEAM_IDS) {
+    if (state.phase !== "build") break; // the first winning delivery ends this build frame
     const T = state.teams[id];
     T.lurch = Math.max(0, T.lurch - dt * 2.2);
     if (T.delivering > 0) {
@@ -406,6 +407,7 @@ function updateTeams(dt) {
   }
 }
 function blocksPlaced(id, n) {
+  if (state.phase !== "build") return; // never double-book a completed layer
   const T = state.teams[id], bpl = CONFIG.blocksPerLayer;
   const before = T.layers;
   const add = Math.max(1, n || 1);
@@ -492,9 +494,12 @@ function bossHit(u, dmg, kind) {
 }
 function wrathOfRa(u, repeats, dmg) {
   repeats = repeats || 1;
-  showPop("ra", ["ra"], ["raSub", { name: u.name + (repeats > 1 ? " " + S("lionX", { n: repeats }) : "") }], 2600, null, 3);
+  const actual = bossHit(u, dmg != null ? dmg : CONFIG.bossDamage.lion * repeats, "ra");
+  // A killing blow must display the victory announcement, not a competing wrath popup.
+  if (state.phase === "boss")
+    showPop("ra", ["ra"], ["raSub", { name: u.name + (repeats > 1 ? " " + S("lionX", { n: repeats }) : "") }], 2600, null, 3);
   flash(0.8, "#fff6c8"); shake(1.2); sfx("ra");
-  return bossHit(u, dmg != null ? dmg : CONFIG.bossDamage.lion * repeats, "ra");
+  return actual;
 }
 function endVictory(reason) {
   if (state.phase === "victory") return;
@@ -2720,9 +2725,21 @@ function snapCamera() { camGrow = 0; updateCamera(0.016); camera.position.copy(c
 window.__snapCamera = snapCamera;
 
 let lastUI = 0, lastT = 0;
+function wallElapsed(now, previous) {
+  // Rendering may run at 5 FPS: game timers must use wall time, not 50 ms/frame.
+  // Bound sleep/reconnect gaps so a laptop waking up does not skip hours of play.
+  return previous ? Math.max(0, Math.min(120, (now - previous) / 1000)) : 1 / 60;
+}
+function advanceClock(now) {
+  const elapsed = wallElapsed(now, lastT);
+  lastT = now;
+  const gameSeconds = state.paused ? 0 : elapsed;
+  state.time += gameSeconds;
+  return gameSeconds;
+}
 function tick(now) {
-  const dt = state.paused ? 0 : Math.min(0.05, (lastT ? now - lastT : 16) / 1000); lastT = now;
-  state.time += dt;
+  const elapsed = advanceClock(now);
+  const dt = Math.min(0.05, elapsed); // animation remains bounded for stability
   try {
     updatePhase();
     updateTeams(dt);
@@ -2744,6 +2761,13 @@ function tick(now) {
   } catch (e) { console.error(e); }
   requestAnimationFrame(tick);
 }
+// A backgrounded OBS/browser source may stop receiving rAF callbacks.
+// Advance phase timers without rendering while hidden; never invent GPU frames.
+setInterval(() => {
+  if (!document.hidden) return;
+  const elapsed = advanceClock(performance.now());
+  if (elapsed) updatePhase();
+}, 500);
 
 function boot() {
   TEAM_IDS.forEach(id => { crestURL[id] = makeCrest(id); });
