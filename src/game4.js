@@ -321,8 +321,18 @@ function shotResult(bf) {
   if (bf.scoreIt) goal(bf.team);
   else { showPop(Math.random() < 0.5 ? T("save") : T("miss"), state.lastShot ? T("goalWhy", state.lastShot) : "", bf.team, 1.3, "small", 1); sfx("groan"); state.phase = "play"; state.ballZ = attackDir(bf.team) * (PL - 8); state.momentum *= 0.4; }
 }
+// v1.6: a goal has a distinct one-second score pulse, separate from the
+// existing confetti and replay. Pure presentation; no score/penalty changes.
+function pulseGoalScore(team) {
+  const el = $("score"); if (!el) return;
+  el.classList.remove("goal-home", "goal-away");
+  // Restart CSS beat even when the same team scores twice.
+  void el.offsetWidth;
+  el.classList.add(team === "home" ? "goal-home" : "goal-away");
+}
 function goal(team) {
-  state.goals[team]++; state.lastScorer = team; state.phase = "celebrate"; state.phaseT = 0; state.shake = 1;
+  state.goals[team]++; state.lastScorer = team;
+  pulseGoalScore(team); state.phase = "celebrate"; state.phaseT = 0; state.shake = 1;
   showPop(T("goal"), T("scored", { t: tName(team) }) + (state.lastShot ? "  " + T("goalWhy", state.lastShot) : ""), team, 3, "", 3);
   sfx("roar"); later(0.2, () => sfx("chant", team));
   goals[attackDir(team)].net.userData.shake = 1;
