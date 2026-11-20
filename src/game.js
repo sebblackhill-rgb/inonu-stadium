@@ -408,6 +408,23 @@ function updateTeams(dt) {
     }
   }
 }
+// v1.9: finite, per-team choreography using the existing instanced worker rigs.
+ // This changes pose timestamps only, never build points, timer, team or gifts.
+const V19_CHEER = { last: { sun: -1e9, nile: -1e9 }, events: 0, team: null, kind: "" };
+function v19CrewCheer(id, kind = "stone", force = false) {
+  if (!TEAM_IDS.includes(id) || state.paused) return 0;
+  if (!force && state.time - V19_CHEER.last[id] < 5) return 0;
+  V19_CHEER.last[id] = state.time; V19_CHEER.events++;
+  V19_CHEER.team = id; V19_CHEER.kind = kind;
+  const now = performance.now();
+  let count = 0;
+  for (const u of state.users.values()) {
+    if (u.team !== id || u.inst < 0 || u.pharaoh) continue;
+    u._v19CelebrateUntil = now + (kind === "victory" ? 3200 : 1400);
+    if (++count >= 48) break; // fixed visual budget
+  }
+  return count;
+}
 function blocksPlaced(id, n) {
   if (state.phase !== "build") return; // never double-book a completed layer
   const T = state.teams[id], bpl = CONFIG.blocksPerLayer;
@@ -417,6 +434,7 @@ function blocksPlaced(id, n) {
   T.delivered += T.transit || add * CONFIG.pullsPerBlock; T.transit = 0; // conservation: earned = delivered + pending (+ adjusted at round end)
   T.layers = Math.floor(T.blocks / bpl);
   if (window.onBlocksPlaced) window.onBlocksPlaced(id, T.layers > before);
+  v19CrewCheer(id, T.layers > before ? "layer" : "stone", T.layers > before);
   sfx("thud"); shake(T.layers > before ? 0.25 : 0.1);
   T.resetting = 0.9;
   for (let L = before + 1; L <= T.layers; L++) { layerPlaced(id, L); if (state.phase !== "build") return; }
@@ -525,6 +543,9 @@ function endVictory(reason) {
   log("win", ["logWin", { team: build }]);
   sfx("win"); flash(0.7, "#fff4c0"); shake(0.8);
   if (window.onVictory) window.onVictory(build);
+  // Both sides made the monument possible; give the finale a group cheer.
+  v19CrewCheer("sun", "victory", true);
+  v19CrewCheer("nile", "victory", true);
   cueV17Camera("victory", build, 7.2);
   applyPhaseUI();
 }
@@ -1231,8 +1252,13 @@ function renderV18Heave() {
   } else if (phase === "boss") {
     const remaining = state.bossMax > 0 ? state.bossHP / state.bossMax : 0;
     progress = Math.max(0, Math.min(100, (1 - remaining) * 100));
-    headline = tr ? "🐍 APEP'İ DURDUR" : "🐍 DEFEAT APEP";
-    instruction = tr ? "Yorum yap veya beğen → saldır" : "Comment or like to attack";
+    const critical = remaining > 0 && remaining <= 0.2;
+    headline = critical
+      ? (tr ? "🔥 SON HAMLE · APEP " : "🔥 FINAL PUSH · APEP ") + Math.ceil(remaining * 100) + "%"
+      : (tr ? "🐍 APEP'İ DURDUR" : "🐍 DEFEAT APEP");
+    instruction = critical
+      ? (tr ? "Herkes yorum yapsın veya beğensin!" : "Everyone comment or like now!")
+      : (tr ? "Yorum yap veya beğen → saldır" : "Comment or like to attack");
   } else if (phase === "race") {
     headline = tr ? "🏁 PİRAMİT TAMAMLANDI!" : "🏁 PYRAMID COMPLETED!";
     instruction = tr ? "APEP GELİYOR" : "APEP APPROACHES";
@@ -1240,13 +1266,21 @@ function renderV18Heave() {
     headline = tr ? "🏆 YENİ TUR GELİYOR" : "🏆 NEXT ROUND SOON";
     instruction = tr ? "Takımlar yeniden hazırlanıyor" : "Crews are regrouping";
   }
-  el.className = phase === "boss" ? "boss" : (phase === "race" ? "race" :
-    phase === "victory" ? "victory" : team) + (delivering ? " delivering" : "");
+  const criticalBoss = phase === "boss" && state.bossMax > 0 &&
+    state.bossHP > 0 && state.bossHP / state.bossMax <= 0.2;
+  el.className = (phase === "boss" ? "boss" : (phase === "race" ? "race" :
+    phase === "victory" ? "victory" : team)) +
+    (delivering ? " delivering" : "") + (criticalBoss ? " final-push" : "");
   if (title.textContent !== headline) title.textContent = headline;
   if (detail.textContent !== instruction) detail.textContent = instruction;
   fill.style.width = progress.toFixed(1) + "%";
 }
 window.__v18Heave = renderV18Heave;
+if (QP.get("visualQA") === "1") {
+  window.__v19CrewPreview = (id = "sun") => v19CrewCheer(id, "layer", true);
+  window.__v19CrewState = () => ({ events: V19_CHEER.events, team: V19_CHEER.team,
+    kind: V19_CHEER.kind });
+}
 function refreshUI() { renderWaiting(); renderMeters(); renderMission(); renderCounts(); renderBoard(); renderStrip(); renderV18Heave(); if (window.renderHostPanel) window.renderHostPanel(); }
 function toggleLang() {
   // all viewer-facing text re-renders, including the visible log (rebuilt from its stored message keys)
@@ -2081,6 +2115,17 @@ function poseWorker(u, t, moving, speed) {
       rig.uaL.rotation.z = -0.15; rig.uaR.rotation.set(s2 > 0.6 ? -2.6 + Math.sin(t * 8) * 0.3 : -0.1, 0, 0.2);
       rig.torso.rotation.y = Math.sin(t * 0.7 + ph) * 0.2;
     }
+  }
+  // A short celebratory hop/ripple on existing rigs. Reset from bindPose()
+  // each frame; physics positions, deliveries and tally remain unchanged.
+  if (!CONFIG.calmEffects && !(window.matchMedia &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches) &&
+      now < (u._v19CelebrateUntil || 0)) {
+    const beat = Math.max(0, Math.sin(t * 11 + ph));
+    rig.root.position.y += beat * 0.19;
+    rig.uaL.rotation.x = -2.65 + beat * 0.2;
+    rig.uaR.rotation.x = -2.65 - beat * 0.2;
+    rig.torso.rotation.z = Math.sin(t * 6 + ph) * 0.055;
   }
   rig.root.updateMatrixWorld(true);
 }

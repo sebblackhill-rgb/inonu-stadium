@@ -1,7 +1,7 @@
 name: Pyramid staging QA (isolated)
 on:
   push:
-    branches: [codex/pyramid-stabilization-20261119, codex/v17-pyramid-cinematic-20261120, codex/v18-gameplay-pyramid-20261120]
+    branches: [codex/pyramid-stabilization-20261119, codex/v17-pyramid-cinematic-20261120, codex/v18-gameplay-pyramid-20261120, codex/v19-pyramid-finale-20261120]
 permissions:
   contents: read
 jobs:
@@ -19,7 +19,7 @@ jobs:
       - name: Preserve exact tested Pyramid staging source for export
         uses: actions/upload-artifact@v4
         with:
-          name: pyramid-v18-gameplay-source
+          name: pyramid-v19-finale-source
           path: |
             .nojekyll
             index.html
@@ -49,6 +49,7 @@ jobs:
           timeout 150s node tests/natural-soak-browser.mjs
           timeout 150s node tests/v17-cinematic-browser.mjs
           timeout 150s node tests/v18-viewer-browser.mjs
+          timeout 150s node tests/v19-finale-browser.mjs
       - name: Upload screenshot evidence
         if: always()
         uses: actions/upload-artifact@v4

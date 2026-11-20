@@ -229,3 +229,18 @@ body.panel-hidden #hide-note { display: block; }
 #v18-heave.nile #v18-heave-fill { background:linear-gradient(90deg,#2166a6,#9ee3ff); }
 #v18-heave.delivering { box-shadow:0 5px 16px rgba(0,0,0,.3),0 0 0 2px rgba(255,225,125,.45); }
 body.calm #v18-heave { transition:none; }
+
+/* v1.9: critical boss phase is visibly urgent, without flashing rapidly.
+   All actions are still free comment/like inputs; the actual HP is unchanged. */
+#v18-heave.final-push {
+  border-color:#ffac72;
+  background:rgba(73,24,18,.92);
+  box-shadow:0 0 0 2px rgba(255,202,100,.2), 0 6px 18px rgba(0,0,0,.43);
+}
+#v18-heave.final-push #v18-heave-title { color:#fff1ad; letter-spacing:.045em; }
+#v18-heave.final-push .v18-track i {
+  background:linear-gradient(90deg,#f35c32,#ffdf75);
+}
+@media (prefers-reduced-motion:reduce) {
+  #v18-heave.final-push { animation:none !important; }
+}
