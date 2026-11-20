@@ -1197,7 +1197,57 @@ function renderWaiting() {
       : (state.conn.st === "live" || state.conn.st === "listening" ? S("waitReady") : S("waitSoon"));
   }
 }
-function refreshUI() { renderWaiting(); renderMeters(); renderMission(); renderCounts(); renderBoard(); renderStrip(); if (window.renderHostPanel) window.renderHostPanel(); }
+// v1.8: stage-readable participatory cue. This reads ledger totals but does
+// not write credits, spawn workers, change the build clock or boss physics.
+function renderV18Heave() {
+  const el = $("v18-heave");
+  if (!el) return;
+  const tr = CONFIG.lang === "tr";
+  const title = $("v18-heave-title"), detail = $("v18-heave-detail"), fill = $("v18-heave-fill");
+  const phase = state.phase;
+  const joined = [...state.users.values()].some(u => u.team);
+  let team = Math.floor(state.time / 5) % 2 ? "nile" : "sun";
+  let headline = "", instruction = "", progress = 0, delivering = false;
+  if (state.paused) {
+    headline = tr ? "⏸ OYUN DURAKLATILDI" : "⏸ GAME PAUSED";
+    instruction = tr ? "Katkılar sırada bekliyor" : "Contributions are being held";
+  } else if (phase === "build") {
+    const busy = TEAM_IDS.find(id => state.teams[id].delivering > 0);
+    if (busy) team = busy;
+    const T = state.teams[team];
+    progress = Math.max(0, Math.min(100, T.pts / CONFIG.pullsPerBlock * 100));
+    delivering = T.delivering > 0;
+    if (!joined) {
+      headline = tr ? "🪢 BİR TAKIMA KATIL" : "🪢 JOIN A CREW";
+      instruction = tr ? "GÜNEŞ veya NİL yaz" : "Type SUN or NILE";
+    } else if (delivering) {
+      headline = "🧱 " + teamShort(team) + (tr ? " · TAŞ YOLDA!" : " · STONE EN ROUTE!");
+      instruction = tr ? "Yeni taşı yerleştiriyoruz" : "Placing the next stone";
+      progress = 100;
+    } else {
+      headline = "🪢 " + teamShort(team) + " · %" + Math.round(progress);
+      instruction = tr ? "Yorum yap → taşı çek" : "Comment to pull the next stone";
+    }
+  } else if (phase === "boss") {
+    const remaining = state.bossMax > 0 ? state.bossHP / state.bossMax : 0;
+    progress = Math.max(0, Math.min(100, (1 - remaining) * 100));
+    headline = tr ? "🐍 APEP'İ DURDUR" : "🐍 DEFEAT APEP";
+    instruction = tr ? "Yorum yap veya beğen → saldır" : "Comment or like to attack";
+  } else if (phase === "race") {
+    headline = tr ? "🏁 PİRAMİT TAMAMLANDI!" : "🏁 PYRAMID COMPLETED!";
+    instruction = tr ? "APEP GELİYOR" : "APEP APPROACHES";
+  } else {
+    headline = tr ? "🏆 YENİ TUR GELİYOR" : "🏆 NEXT ROUND SOON";
+    instruction = tr ? "Takımlar yeniden hazırlanıyor" : "Crews are regrouping";
+  }
+  el.className = phase === "boss" ? "boss" : (phase === "race" ? "race" :
+    phase === "victory" ? "victory" : team) + (delivering ? " delivering" : "");
+  if (title.textContent !== headline) title.textContent = headline;
+  if (detail.textContent !== instruction) detail.textContent = instruction;
+  fill.style.width = progress.toFixed(1) + "%";
+}
+window.__v18Heave = renderV18Heave;
+function refreshUI() { renderWaiting(); renderMeters(); renderMission(); renderCounts(); renderBoard(); renderStrip(); renderV18Heave(); if (window.renderHostPanel) window.renderHostPanel(); }
 function toggleLang() {
   // all viewer-facing text re-renders, including the visible log (rebuilt from its stored message keys)
   CONFIG.lang = CONFIG.lang === "en" ? "tr" : "en";
@@ -2007,6 +2057,10 @@ function poseWorker(u, t, moving, speed) {
     const solo = Math.sin(heave * Math.PI);
     const group = ropePullBeat(t, u.slot, state.teams[u.team].lurch);
     const hk = Math.max(solo, group * 0.72);
+    // v1.8: each rope row visibly braces as one during a real heave;
+    // existing instanced rigs only, no additional meshes/draw calls.
+    rig.root.position.x -= Math.sin(u.facing) * hk * 0.11;
+    rig.root.position.z -= Math.cos(u.facing) * hk * 0.11;
     const strain = 0.5 + 0.5 * Math.sin(t * 3.1 + ph);
     const lean = 0.42 + hk * 0.3 + strain * 0.05;
     rig.hips.rotation.x = lean * 0.45; rig.torso.rotation.x = lean * 0.55;
