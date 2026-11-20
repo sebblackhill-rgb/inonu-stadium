@@ -41,7 +41,8 @@ const CONFIG = {
   streakMemoryMs: 300000, // settled streaks are remembered this long; a later final for the same streak only credits its increase (see ledger.js)
   streakMemoryMax: 5000,  // bound on remembered streaks
   eventIdMemory: 20000,   // LRU of processed event ids (kept across connector reconnects) to drop replays
-  maxParticipants: 20000, // ledger hard cap (every viewer is credited; only maxWorkers get a visible avatar)
+  maxParticipants: 20000, // normal participant cap; extra gifted viewers remain recognisable
+  giftOverflowReserve: 2000, // protected credit-only users above the normal 20k limit
   calmEffects: false,     // fewer flashes / no shake (also ?calm=1 or the host panel)
   bossDamage: { chat: 6, like: 2, diamond: 8, lion: 4000 },
   maxWorkers: 360,        // visible avatars; extra viewers still count and are shown as "+N cheering"
@@ -247,7 +248,8 @@ state.gustUntil = 0; state.gustsDone = 0;
 window.__game = state;
 // heave multiplier: ?speed=N wins; live TikTok mode is 1x; the bot demo / shared link uses CONFIG.demoSpeed
 // ?speed is validated: finite and 0.1..100, otherwise the default is used (bad links can't break pacing)
-const SPEED = (() => { const q = new URLSearchParams(location.search); const raw = q.get("speed"); const v = Number(raw); if (raw != null && raw !== "" && isFinite(v) && v >= 0.1 && v <= 100) return v; return q.get("live") === "1" ? 1 : CONFIG.demoSpeed; })();
+const SPEED = (() => { const q = new URLSearchParams(location.search); if (q.get("live") === "1") return 1; // paid audience pacing is never URL-adjustable
+  const raw = q.get("speed"); const v = Number(raw); if (raw != null && raw !== "" && Number.isFinite(v) && v >= 0.1 && v <= 100) return v; return CONFIG.demoSpeed; })();
 if (new URLSearchParams(location.search).get("calm") === "1") CONFIG.calmEffects = true;
 window.__speed = SPEED;
 window.CONFIG = CONFIG;
@@ -385,6 +387,7 @@ function updateTeams(dt) {
   if (state.phase !== "build") return;
   const now = performance.now();
   for (const id of TEAM_IDS) {
+    if (state.phase !== "build") break; // the first winning delivery ends this build frame
     const T = state.teams[id];
     T.lurch = Math.max(0, T.lurch - dt * 2.2);
     if (T.delivering > 0) {
@@ -406,6 +409,7 @@ function updateTeams(dt) {
   }
 }
 function blocksPlaced(id, n) {
+  if (state.phase !== "build") return; // never double-book a completed layer
   const T = state.teams[id], bpl = CONFIG.blocksPerLayer;
   const before = T.layers;
   const add = Math.max(1, n || 1);
@@ -492,9 +496,12 @@ function bossHit(u, dmg, kind) {
 }
 function wrathOfRa(u, repeats, dmg) {
   repeats = repeats || 1;
-  showPop("ra", ["ra"], ["raSub", { name: u.name + (repeats > 1 ? " " + S("lionX", { n: repeats }) : "") }], 2600, null, 3);
+  const actual = bossHit(u, dmg != null ? dmg : CONFIG.bossDamage.lion * repeats, "ra");
+  // A killing blow must display the victory announcement, not a competing wrath popup.
+  if (state.phase === "boss")
+    showPop("ra", ["ra"], ["raSub", { name: u.name + (repeats > 1 ? " " + S("lionX", { n: repeats }) : "") }], 2600, null, 3);
   flash(0.8, "#fff6c8"); shake(1.2); sfx("ra");
-  return bossHit(u, dmg != null ? dmg : CONFIG.bossDamage.lion * repeats, "ra");
+  return actual;
 }
 function endVictory(reason) {
   if (state.phase === "victory") return;
@@ -610,10 +617,27 @@ function makeUser(id, name, team, photoUrl) {
     spawned: false, bubble: "", bubbleUntil: 0, scale: 0.92 + ((h >> 7) % 17) / 100
   };
 }
-function getOrMakeUser(userId, username, photoUrl, src) {
+function getOrMakeUser(userId, username, photoUrl, src, preserveGiftCredit = false) {
   let u = state.users.get(userId);
   if (!u) {
-    if (state.users.size >= CONFIG.maxParticipants) return null;
+    if (state.users.size >= CONFIG.maxParticipants) {
+      // Free, empty, unassigned records may be discarded to welcome new people.
+      // Never evict someone who chose a team or has pending likes/gift credit.
+      let removed = 0;
+      for (const [key, rec] of state.users) {
+        if (state.users.size < CONFIG.maxParticipants || removed >= 64) break;
+        if (!rec.team && !rec.diamonds && (!rec.pending || rec.pending.length === 0)
+          && performance.now() - (rec.lastActive || 0) > 60000) {
+          state.users.delete(key); removed++;
+        }
+      }
+    }
+    if (state.users.size >= CONFIG.maxParticipants) {
+      // A new giver must not lose recognition because 20,000 people already joined.
+      // The 2,000 reserve supports credit without adding another on-screen avatar.
+      if (!preserveGiftCredit || state.users.size >= CONFIG.maxParticipants + CONFIG.giftOverflowReserve)
+        return null;
+    }
     u = makeUser(userId, username, null, photoUrl); u.src = src;
     state.users.set(userId, u);
   }
@@ -919,8 +943,11 @@ function settleStreak(rec) {
 }
 function processGift(userId, evt, repeats, base) {
   const g = resolveGift(Object.assign({}, evt, { repeatCount: repeats }));
-  const u = getOrMakeUser(userId, base.user, evt.photoUrl, base.src);
-  if (!u) return diag(Object.assign(base, { outcome: "rejected", reason: "participant ledger full" }));
+  const u = getOrMakeUser(userId, base.user, evt.photoUrl, base.src, true);
+  if (!u) {
+    log("gift", "Gift could not be credited: supporter reserve full; please alert the host.");
+    return diag(Object.assign(base, { outcome: "rejected", reason: "gift recognition reserve full" }));
+  }
   const act = { type: "gift", g, src: base.src, eid: base.eid };
   if (!u.team) {
     holdPending(u, act);
@@ -940,6 +967,9 @@ function nag(u, what) {
 function handleLiveEvent(evt) {
   if (!evt || typeof evt !== "object") return diag({ outcome: "rejected", reason: "bad event" });
   const src = ["live", "test", "demo"].includes(evt.source) ? evt.source : (state.mode === "live" ? "live" : "test");
+  const hostAllowed = new URLSearchParams(location.search).get("host") === "1";
+  if (state.mode === "live" && src !== "live" && !hostAllowed)
+    return diag({ outcome: "rejected", src, type: evt.type, reason: "host tests disabled in LIVE; use explicit host mode on a private preview" });
   const userId = String(evt.userId || evt.uniqueId || evt.username || "").trim().slice(0, 80);
   const username = (String(evt.username || evt.nickname || evt.userId || "worker").trim() || "worker").slice(0, 40);
   const type = String(evt.type || "chat").toLowerCase();
@@ -948,6 +978,23 @@ function handleLiveEvent(evt) {
   if (src === "live") { state.conn.lastEvent = performance.now(); if (state.conn.st !== "live") state.conn.st = "live"; }
   if (!userId) return diag(Object.assign(base, { outcome: "rejected", reason: "no user id" }));
   if (type !== "chat" && type !== "like" && type !== "gift") return diag(Object.assign(base, { outcome: "rejected", reason: "unknown type " + type }));
+  // Validate source payload BEFORE ledger deduplication or gameplay changes.
+  const validPositive = (v,max) => {
+    const n = typeof v === "number" ? v : typeof v === "string" && v.trim() ? Number(v) : NaN;
+    return Number.isSafeInteger(n) && n >= 1 && n <= max ? n : null;
+  };
+  if (type === "like") {
+    const x = evt.likeCount ?? evt.repeatCount ?? 1, n = validPositive(x,100000);
+    if (n === null) return diag(Object.assign(base,{outcome:"rejected",reason:"invalid like count"}));
+    evt = Object.assign({},evt,{likeCount:n});
+  }
+  if (type === "gift") {
+    const units = validPositive(evt.diamondCount ?? evt.giftValue,1000000);
+    const repeats = validPositive(evt.repeatCount ?? 1,100000);
+    if (units === null || repeats === null)
+      return diag(Object.assign(base,{outcome:"rejected",reason:"invalid gift units or repeats"}));
+    evt = Object.assign({},evt,{diamondCount:units,giftValue:units,repeatCount:repeats});
+  }
   LEDGER.bySrc[src]++;
   if (eid != null && eid !== "") {
     // bounded LRU of event ids; it lives for the whole page session, so it survives connector reconnects / replays
@@ -983,7 +1030,7 @@ function handleLiveEvent(evt) {
     return r;
   }
   if (type === "like") {
-    const n = Math.max(1, Math.min(15, Number(evt.likeCount || evt.repeatCount) || 1));
+    const n = Math.min(15, evt.likeCount);
     if (!u || !u.team) {
       u = getOrMakeUser(userId, username, evt.photoUrl, src);
       if (!u) return diag(Object.assign(base, { outcome: "rejected", reason: "participant ledger full" }));
@@ -1028,6 +1075,35 @@ function applyPhaseUI() {
   ruleAt = 0; renderStrip(); rerenderPop();
   refreshUI();
 }
+function missionModel(s, cfg) {
+  const tr = cfg.lang === "tr", layers = cfg.layers;
+  const sun = Math.min(layers, s.teams.sun.layers), nile = Math.min(layers, s.teams.nile.layers);
+  const remain = (v) => Math.max(0, Math.ceil(v - s.time));
+  if (s.phase === "boss") {
+    return { phase: "boss",
+      main: tr ? "🐍 APEP'İ YEN · " + Math.ceil(s.bossHP).toLocaleString() + " CAN"
+               : "🐍 DEFEAT APEP · " + Math.ceil(s.bossHP).toLocaleString() + " HP",
+      detail: "⏳ " + remain(s.bossEnds) + "s · " + (tr ? "HEP BİRLİKTE" : "FIGHT TOGETHER") };
+  }
+  if (s.phase === "victory") return { phase: "victory",
+    main: tr ? "🏆 PİRAMİT TAMAMLANDI" : "🏆 PYRAMID COMPLETE",
+    detail: (tr ? "YENİ TUR" : "NEXT ROUND") + " · " + remain(s.phaseAt) + "s" };
+  if (s.phase === "race") return { phase: "race",
+    main: tr ? "🏁 " + String(s.raceWinner || "").toUpperCase() + " ÖNDE BİTİRDİ"
+             : "🏁 " + String(s.raceWinner || "").toUpperCase() + " FINISHED FIRST",
+    detail: (tr ? "APEP GELİYOR" : "APEP APPROACHES") + " · " + remain(s.phaseAt) + "s" };
+  const next = Math.min(layers, (Math.floor(Math.max(sun,nile) / cfg.milestoneEvery) + 1) * cfg.milestoneEvery);
+  return {phase:"build",
+    main: "🧱 " + (tr ? "SONRAKİ HEDEF · KAT " : "NEXT MILESTONE · LAYER ") + next,
+    detail: "SUN " + sun + "/" + layers + " · NILE " + nile + "/" + layers };
+}
+function renderMission() {
+  const el = $("mission"); if (!el) return;
+  const m = missionModel(state, CONFIG);
+  el.className = "mission " + m.phase;
+  if ($("mission-main").textContent !== m.main) $("mission-main").textContent = m.main;
+  if ($("mission-detail").textContent !== m.detail) $("mission-detail").textContent = m.detail;
+}
 function renderMeters() {
   let html = "";
   if (state.phase === "boss") {
@@ -1068,12 +1144,15 @@ function renderCounts() {
   $("counts").innerHTML = txt;
 }
 function topBy(key, n, filter) {
-  return [...state.users.values()].filter(u => u.team && u[key] > 0 && (!filter || filter(u))).sort((a, b) => b[key] - a[key]).slice(0, n);
+  return [...state.users.values()].filter(u => u.team && u[key] > 0
+    && (state.mode !== "live" || u.src === "live")
+    && (!filter || filter(u))).sort((a, b) => b[key] - a[key]).slice(0, n);
 }
 function renderBoard() {
   let html = "<h2>👑 " + S("boardPharaohs") + "</h2>";
   for (const id of TEAM_IDS) {
-    const p = [...state.users.values()].find(u => u.team === id && u.pharaoh);
+    const p = [...state.users.values()].find(u => u.team === id && u.pharaoh
+      && (state.mode !== "live" || u.src === "live"));
     const c = CONFIG.teams[id].colors;
     if (!p) html += '<div class="cap-row"><div class="av" style="border-color:' + c.css + '"><img src="' + crestURL[id] + '"/></div><div class="nm" style="color:#b8a888;font-size:10px">' + esc(S("pharaohNeed", { p: CONFIG.pharaohGift })) + "</div></div>";
     else {
@@ -1101,12 +1180,19 @@ function renderWaiting() {
   const on = state.mode === "live" && !crew && state.phase === "build";
   el.classList.toggle("on", on);
   if (on) {
-    $("wait-t").textContent = S("waitTitle");
-    $("wait-s").innerHTML = esc(S("waitSub")).replace("{k1}", '<b class="k sun">' + esc(teamShort("sun")) + "</b>").replace("{k2}", '<b class="k nile">' + esc(teamShort("nile")) + "</b>");
-    $("wait-c").textContent = state.conn.st === "live" || state.conn.st === "listening" ? S("waitReady") : S("waitSoon");
+    const disconnected = state.conn.st === "down";
+    $("wait-t").textContent = disconnected
+      ? (CONFIG.lang === "tr" ? "CANLI BAĞLANTI KESİLDİ" : "LIVE CONNECTION UNAVAILABLE")
+      : S("waitTitle");
+    $("wait-s").innerHTML = disconnected
+      ? (CONFIG.lang === "tr" ? "Yayıncı tekrar bağlanmalı. Şu an katkılar alınamıyor." : "Host must reconnect. Contributions are not being received right now.")
+      : esc(S("waitSub")).replace("{k1}", '<b class="k sun">' + esc(teamShort("sun")) + "</b>").replace("{k2}", '<b class="k nile">' + esc(teamShort("nile")) + "</b>");
+    $("wait-c").textContent = disconnected
+      ? (CONFIG.lang === "tr" ? "BAĞLANTI YOK" : "NOT CONNECTED")
+      : (state.conn.st === "live" || state.conn.st === "listening" ? S("waitReady") : S("waitSoon"));
   }
 }
-function refreshUI() { renderWaiting(); renderMeters(); renderCounts(); renderBoard(); renderStrip(); if (window.renderHostPanel) window.renderHostPanel(); }
+function refreshUI() { renderWaiting(); renderMeters(); renderMission(); renderCounts(); renderBoard(); renderStrip(); if (window.renderHostPanel) window.renderHostPanel(); }
 function toggleLang() {
   // all viewer-facing text re-renders, including the visible log (rebuilt from its stored message keys)
   CONFIG.lang = CONFIG.lang === "en" ? "tr" : "en";
@@ -1886,6 +1972,15 @@ function workerTarget(u, out) {
   return out;
 }
 
+// v1.6 action-layer integration: workers on the same rope row share a
+// lightweight pull beat after a team heave. These are pose offsets on existing
+// instanced worker rigs, not new avatars or additional draw calls.
+function ropePullBeat(time, slot, lurch) {
+  if (!Number.isFinite(time) || !Number.isFinite(lurch)) return 0;
+  const energy = Math.max(0, Math.min(1, lurch));
+  const wave = Math.max(0, Math.sin(time * 9 - Math.floor(slot / 4) * 0.55));
+  return energy * (0.35 + wave * 0.65);
+}
 function poseWorker(u, t, moving, speed) {
   bindPose();
   rig.root.position.set(u.x, u.y, u.z);
@@ -1903,7 +1998,10 @@ function poseWorker(u, t, moving, speed) {
     rig.torso.rotation.x = 0.12 * f;
   } else if (u.onRope) {
     // hauling: lean into the rope over the shoulder, legs dug in
-    const heave = Math.max(0, (u.heaveT - now) / 520), hk = Math.sin(heave * Math.PI);
+    const heave = Math.max(0, (u.heaveT - now) / 520);
+    const solo = Math.sin(heave * Math.PI);
+    const group = ropePullBeat(t, u.slot, state.teams[u.team].lurch);
+    const hk = Math.max(solo, group * 0.72);
     const strain = 0.5 + 0.5 * Math.sin(t * 3.1 + ph);
     const lean = 0.42 + hk * 0.3 + strain * 0.05;
     rig.hips.rotation.x = lean * 0.45; rig.torso.rotation.x = lean * 0.55;
@@ -2016,6 +2114,9 @@ window.onBlocksPlaced = (id, newLayer) => {
   const y = Math.min(T.layers, CONFIG.layers) * LH + 0.3, s = layerSide(Math.min(li, CONFIG.layers - 1)) / 2;
   const zEdge = PC.z - s + 2 * s * (newLayer ? 1 : o.partial);
   for (let i = 0; i < 14; i++) dustPuff(SIDE[id] * rnd(0.3, s), y, zEdge + rnd(-0.6, 0.6), 1, 0xf2dcae, 2);
+  // Small placement confirmation for each delivered stone. Milestones retain
+  // their larger existing celebration, while routine deliveries stay subtle.
+  sparkle(SIDE[id] * Math.max(0.3, s * 0.45), y + 0.55, zEdge, 12, 0xffe09b, 2);
   sledges[id].block.scale.set(0.01, 0.01, 0.01); sledges[id].regrow = 0;
   delete deliveries[id];
 };
@@ -2144,7 +2245,8 @@ window.onPharaoh = (u) => { const L = litters[u.team]; if (L) { L.user = u; if (
 function updateLitters(t, dt) {
   for (const id of TEAM_IDS) {
     const L = litters[id];
-    const p = [...state.users.values()].find(u => u.team === id && u.pharaoh);
+    const p = [...state.users.values()].find(u => u.team === id && u.pharaoh
+      && (state.mode !== "live" || u.src === "live"));
     L.user = p || null; L.g.visible = !!p;
     if (!p) continue;
     const T = state.teams[id], path = paths[id];
@@ -2592,7 +2694,14 @@ function seedCrowd(n) {
    -> live (green, last event Ns ago; amber when quiet > 90 s) or down (bounded retries 10 s / 30 s / 60 s, then host Retry).
    Bots are never substituted in live mode. */
 const RETRY_S = [10, 30, 60];
-let pr = { subscribed: false, loading: null, retryTimer: null };
+let pr = { subscribed: false, loading: null, retryTimer: null, generation: 0, unsubscribe: null, inFlight: false };
+function clearPlayroomListener() {
+  if (typeof pr.unsubscribe === "function") {
+    try { pr.unsubscribe(); } catch (e) { console.warn("[live] unsubscribe failed", e); }
+  }
+  pr.unsubscribe = null;
+  pr.subscribed = false;
+}
 function setConn(st, why) {
   state.conn.st = st;
   if (why) diag({ outcome: "info", src: "live", type: "connection", reason: st + ": " + why });
@@ -2606,43 +2715,71 @@ function scheduleRetry() {
 function loadPlayroom() {
   if (pr.loading) return pr.loading;
   pr.loading = new Promise((resolve, reject) => {
-    const s = document.createElement("script"); s.src = "https://unpkg.com/playroomkit/multiplayer.js";
+    const s = document.createElement("script"); s.src = "https://cdn.joinplayroom.com/playroomkit/multiplayer.full.umd.js";
     s.onload = resolve; s.onerror = () => { pr.loading = null; s.remove(); reject(new Error("could not load the Playroom Kit script")); }; document.head.appendChild(s);
   });
   return pr.loading;
 }
 function mapLiveEvent(event) {
   const d = (event && event.data) || event || {};
-  const raw = String((event && event.type) || d.type || "chat").toLowerCase();
-  const type = raw.includes("gift") ? "gift" : raw.includes("like") ? "like" : "chat";
+  const raw = String((event && event.type) || d.type || "").toLowerCase();
+  if (!["chat","like","gift"].includes(raw)) return null; // a follow/share is NOT a free heave
+  if (!d.userId) return null; // never combine paid credit under anonymous name-only identity
+  const value = d.giftDiamondCount ?? d.diamondCount ?? d.diamond_count ?? d.giftValue;
   return {
-    source: "live", type, eventId: d.msgId || d.eventId || d.id || (event && (event.msgId || event.id)),
-    userId: d.userId || d.uniqueId || d.unique_id || d.username, username: d.username || d.nickName || d.nickname || d.uniqueId || "viewer",
+    source: "live", type: raw, eventId: d.msgId ?? d.eventId ?? d.id ?? (event && (event.msgId ?? event.id)),
+    userId: String(d.userId), username: d.name || d.username || d.nickName || d.nickname || d.uniqueId || "viewer",
     comment: d.comment || d.content || "", giftName: d.giftName || d.gift_name || d.gift || "",
-    giftValue: d.giftValue || d.diamondCount || d.diamond_count || 1, diamondCount: d.diamondCount || d.diamond_count || d.giftValue,
-    repeatCount: d.repeatCount || d.repeat_count || 1, repeatEnd: d.repeatEnd != null ? d.repeatEnd : d.repeat_end, groupId: d.groupId || d.group_id,
-    likeCount: d.likeCount || d.like_count, photoUrl: d.userPhotoUrl || d.profilePictureUrl || d.photoUrl
+    giftValue: value, diamondCount: value,
+    repeatCount: d.repeatCount ?? d.repeat_count ?? 1,
+    repeatEnd: d.repeatEnd ?? d.repeat_end, groupId: d.streakId || d.comboId || d.groupId || d.group_id,
+    likeCount: d.likeCount ?? d.like_count ?? 1,
+    photoUrl: d.userPhotoUrl || d.profilePictureUrl || d.photoUrl
   };
 }
 async function tryConnectPlayroom(isRetry) {
-  if (state.mode !== "live" || pr.subscribed) return;
+  if (state.mode !== "live") return;
+  // A forced retry retires old handlers; ordinary automatic calls do not
+  // register duplicates while a connection is already listening.
+  if (!isRetry && (pr.subscribed || pr.inFlight)) return;
+  const generation = ++pr.generation;
+  clearTimeout(pr.retryTimer);
+  clearPlayroomListener();
+  pr.inFlight = true;
   setConn("connecting", isRetry ? "retry " + state.conn.tries : "start");
   try {
     await loadPlayroom();
+    if (generation !== pr.generation) return;
     const mod = window.Playroom || window.PlayroomKit || window;
-    const insertCoin = mod.insertCoin || window.insertCoin, onTikTokLiveEvent = mod.onTikTokLiveEvent || window.onTikTokLiveEvent;
-    if (typeof insertCoin !== "function" || typeof onTikTokLiveEvent !== "function") throw new Error("insertCoin / onTikTokLiveEvent not found");
+    const insertCoin = mod.insertCoin || window.insertCoin;
+    const onTikTokLiveEvent = mod.onTikTokLiveEvent || window.onTikTokLiveEvent;
+    if (typeof insertCoin !== "function" || typeof onTikTokLiveEvent !== "function")
+      throw new Error("insertCoin / onTikTokLiveEvent not found");
     await insertCoin({ liveMode: "tiktok" });
-    onTikTokLiveEvent((event) => { try { handleLiveEvent(mapLiveEvent(event)); } catch (e) { console.warn("[live] bad event", e); } });
-    if (isRetry) LEDGER.reconnects++; // the event-id memory is kept, so replayed events after a reconnect are dropped
+    if (generation !== pr.generation) return;
+    const off = onTikTokLiveEvent((event) => {
+      if (generation !== pr.generation || state.mode !== "live") return;
+      try { const mapped = mapLiveEvent(event); if (mapped) handleLiveEvent(mapped); }
+      catch (e) { console.warn("[live] bad event", e); }
+    });
+    pr.unsubscribe = typeof off === "function" ? off : null;
+    if (isRetry) LEDGER.reconnects++;
     pr.subscribed = true; state.conn.tries = 0; state.conn.retryAt = 0;
     setConn(state.conn.lastEvent ? "live" : "listening", "subscribed to TikTok LIVE events");
   } catch (err) {
+    if (generation !== pr.generation) return; // ignore superseded connection errors
+    clearPlayroomListener();
     setConn("down", err && err.message ? err.message : String(err));
     scheduleRetry();
+  } finally {
+    if (generation === pr.generation) pr.inFlight = false;
   }
 }
-function retryLive() { if (state.mode !== "live") return; state.conn.tries = 0; clearTimeout(pr.retryTimer); tryConnectPlayroom(true); }
+function retryLive() {
+  if (state.mode !== "live") return;
+  state.conn.tries = 0;
+  tryConnectPlayroom(true);
+}
 
 /* ---------- camera, layout, loop, boot ---------- */
 function fit() {
@@ -2696,12 +2833,34 @@ function snapCamera() { camGrow = 0; updateCamera(0.016); camera.position.copy(c
 window.__snapCamera = snapCamera;
 
 let lastUI = 0, lastT = 0;
+function wallElapsed(now, previous) {
+  // Rendering may run at 5 FPS: game timers must use wall time, not 50 ms/frame.
+  // Bound sleep/reconnect gaps so a laptop waking up does not skip hours of play.
+  return previous ? Math.max(0, Math.min(120, (now - previous) / 1000)) : 1 / 60;
+}
+function advanceClock(now) {
+  const elapsed = wallElapsed(now, lastT);
+  lastT = now;
+  const gameSeconds = state.paused ? 0 : elapsed;
+  state.time += gameSeconds;
+  return gameSeconds;
+}
+// Low FPS must not make a 1.4-second delivery take 5.6 wall seconds.
+function advanceBuildLogic(elapsed) {
+  if (!Number.isFinite(elapsed) || elapsed <= 0 || state.paused || state.phase !== "build") return 0;
+  // Substep team gameplay without rendering; bound work after a sleeping-PC gap.
+  const simulated = Math.min(elapsed, 10);
+  const count = Math.ceil(simulated / 0.05);
+  const slice = simulated / count;
+  for (let i = 0; i < count && state.phase === "build"; i++) updateTeams(slice);
+  return simulated;
+}
 function tick(now) {
-  const dt = state.paused ? 0 : Math.min(0.05, (lastT ? now - lastT : 16) / 1000); lastT = now;
-  state.time += dt;
+  const elapsed = advanceClock(now);
+  const dt = Math.min(0.05, elapsed); // visual animation remains bounded for stability
   try {
     updatePhase();
-    updateTeams(dt);
+    advanceBuildLogic(elapsed);
     updateSledges(dt, state.time);
     updateLitters(state.time, dt);
     updatePeople(state.time, dt);
@@ -2720,6 +2879,13 @@ function tick(now) {
   } catch (e) { console.error(e); }
   requestAnimationFrame(tick);
 }
+// A backgrounded OBS/browser source may stop receiving rAF callbacks.
+// Advance phase timers without rendering while hidden; never invent GPU frames.
+setInterval(() => {
+  if (!document.hidden) return;
+  const elapsed = advanceClock(performance.now());
+  if (elapsed) { updatePhase(); advanceBuildLogic(elapsed); }
+}, 500);
 
 function boot() {
   TEAM_IDS.forEach(id => { crestURL[id] = makeCrest(id); });
@@ -2739,7 +2905,14 @@ function boot() {
   $("btn-lion").addEventListener("click", () => handleLiveEvent(Object.assign({ type: "gift", giftName: "Lion", diamondCount: 1500 }, who())));
   chips.querySelectorAll("button").forEach((btn) => btn.addEventListener("click", () => { $("fake-comment").value = btn.dataset.fill; $("btn-send").click(); }));
   $("bot-rate").addEventListener("input", () => { $("bot-rate-val").textContent = $("bot-rate").value + "/s"; });
-  $("bot-toggle").addEventListener("change", () => { if ($("bot-toggle").checked) startBot(); else stopBot(); });
+  $("bot-toggle").addEventListener("change", () => {
+    if (state.mode === "live") {
+      $("bot-toggle").checked = false; stopBot();
+      console.warn("[LIVE] Demo bots cannot run during a LIVE session");
+      return;
+    }
+    if ($("bot-toggle").checked) startBot(); else stopBot();
+  });
   window.addEventListener("keydown", (e) => {
     if (e.target && /input|textarea/i.test(e.target.tagName)) return;
     if (e.key === "h" || e.key === "H") { document.body.classList.toggle("panel-hidden"); fit(); }
@@ -2777,7 +2950,7 @@ function boot() {
   if (state.mode === "live") { document.body.classList.add("panel-hidden"); if (q.get("host") !== "1") document.body.classList.add("viewer-capture"); $("bot-toggle").disabled = true; fit(); }
   if (q.get("calm") === "1") setCalm(true);
   const safe = Number(q.get("safe")); if (isFinite(safe) && safe > 0) $("stage").style.setProperty("--safe-b", Math.min(400, safe) + "px"); // reserve space for platform overlays
-  if (q.get("bot") === "1") { $("bot-toggle").checked = true; startBot(); }
+  if (q.get("bot") === "1" && state.mode !== "live") { $("bot-toggle").checked = true; startBot(); }
   if (q.get("sound") === "1") setMuted(false);
   if (q.get("lang") === "tr") { CONFIG.lang = "tr"; applyPhaseUI(); }
   if (q.get("panel") === "0") { document.body.classList.add("panel-hidden"); fit(); }
@@ -2788,7 +2961,7 @@ function boot() {
 window.renderHostPanel = function () {
   if (document.body.classList.contains("panel-hidden")) return;
   const ct = connText();
-  $("host-status").innerHTML = "Mode: <b>" + state.mode.toUpperCase() + "</b> · " + '<span class="conn ' + ct[0] + '">' + esc(ct[1]) + "</span> · speed ×" + SPEED + " · round " + state.round + " · " + state.phase + (state.paused ? " · PAUSED" : "");
+  $("host-status").innerHTML = "Mode: <b>" + state.mode.toUpperCase() + "</b> · " + '<span class="conn ' + ct[0] + '">' + esc(ct[1]) + "</span> · speed ×" + SPEED + " · round " + state.round + " · " + state.phase + " · PYRAMID STAGING 2026-11-19" + (state.paused ? " · PAUSED" : "");
   $("h-retry").disabled = state.mode !== "live";
   $("h-pause").textContent = state.paused ? "▶ Resume" : "⏸ Pause";
   $("h-calm").textContent = "✨ Calm effects: " + (CONFIG.calmEffects ? "on" : "off");
