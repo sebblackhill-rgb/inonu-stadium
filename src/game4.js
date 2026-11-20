@@ -230,6 +230,9 @@ window.handleLiveEvent = function (ev) {
   try {
     if (!ev) return;
     if (Q.get("live") === "1" && ev.source === "host" && Q.get("host") !== "1") return;
+  if (Q.get("live") === "1" && ev.source !== "tiktok") return;
+  // LIVE scoring only receives mapped provider callbacks. Host preview
+  // simulations must use a separate ?demo=1 tab, never the actual broadcast.
     if (ev.source === "tiktok" && !ev.userId) return; // no shared anonymous paid-credit identity
     lastLiveEvt = state.time;
     const id = String(ev.userId || ev.uniqueId || ev.username || "anon"), name = String(ev.username || ev.nickname || id).replace(/^@/, "").slice(0, 18);
@@ -608,7 +611,9 @@ function botEvent() {
   else handleLiveEvent({ type: "gift", userId: f.id, username: f.name, giftName: "Party", diamondCount: 300 });
 }
 let botAcc = 0, botOn = false;
-function seedCrowd(n) { for (let i = 0; i < n; i++) { const t = i % 2 ? "away" : "home"; const id = "bot" + botN, name = botName(botN); botN++; const f = addFan(id, name, t); if (f) f.joinT = -5; } }
+function seedCrowd(n) {
+  if (Q.get("live") === "1") return; // no bot seed through ?seed= in LIVE
+  for (let i = 0; i < n; i++) { const t = i % 2 ? "away" : "home"; const id = "bot" + botN, name = botName(botN); botN++; const f = addFan(id, name, t); if (f) f.joinT = -5; } }
 window.__seedCrowd = seedCrowd;
 
 /* ================= Playroom TikTok LIVE bridge (?live=1) with honest status ================= */
@@ -627,6 +632,7 @@ function clearLiveSubscriptions() {
 const RETRY_SCALE = +(Q.get("retryScale") || 1);   // test hook: shrink the backoff delays
 function setLive(st, extra) {
   const tick = extra === "tick"; liveState = st; window.__liveStatus = st;
+  window.V20Ops?.link(st === "ok" ? "live" : st);
   const el = $("livepill"); el.style.display = "block";
   let txt = { connecting: T("liveConnecting"), ok: T("liveOk"), fail: T("liveFail"), lost: T("liveLost"), quiet: T("liveQuiet", { s: tick ? 90 : extra || 90 }) }[st] || st;
   const tap = (st === "fail" && liveTry >= CONFIG.live.maxTries) || st === "lost";
@@ -652,7 +658,11 @@ async function tryConnectPlayroom(manual) {
   liveTry++; window.__liveAttempts.push(performance.now());
   setLive("connecting");
   try {
-    const src = window.__bridgeSrc || Q.get("bridgeSrc") || "https://cdn.joinplayroom.com/playroomkit/multiplayer.full.umd.js";
+    // Never load an arbitrary script from a public broadcast URL parameter.
+    // The mock bridge override is test-only, restricted to localhost.
+    const localTest = ["localhost","127.0.0.1"].includes(location.hostname);
+    const src = (localTest && (window.__bridgeSrc || Q.get("bridgeSrc"))) ||
+      "https://cdn.joinplayroom.com/playroomkit/multiplayer.full.umd.js";
     document.querySelectorAll("script[data-bridge]").forEach(s => s.remove());
     await new Promise((res, rej) => { const s = document.createElement("script"); s.dataset.bridge = "1"; s.src = src; s.onload = res; s.onerror = () => rej(new Error("bridge script failed to load")); document.head.appendChild(s); setTimeout(() => rej(new Error("bridge load timeout")), 20000); });
     const mod = window.Playroom || window.PlayroomKit || window;
@@ -678,16 +688,27 @@ async function tryConnectPlayroom(manual) {
         streakId: d.streakId || d.comboId || d.groupId || ""
       };
       handleLiveEvent(mapped);
+      window.V20Ops?.event(raw,"forwarded");
       if (liveState !== "ok") setLive("ok");
     });
     liveUnsubscribe = typeof off === "function" ? off : null;
     if (typeof onDisconnect === "function") {
       const offDisconnect = onDisconnect(() => {
-        if (generation === liveGeneration) setLive("lost");
+        if (generation !== liveGeneration) return;
+        // Old callbacks are invalidated before bounded reconnect; no duplicates.
+        ++liveGeneration;
+        clearLiveSubscriptions();
+        liveTry = 0;
+        const B=CONFIG.live.backoff;
+        const d=(B[0]||3)*1000*RETRY_SCALE;
+        liveRetryAt=performance.now()+d;
+        setLive("fail");
+        clearTimeout(liveTimer);
+        liveTimer=setTimeout(()=>tryConnectPlayroom(false),d);
       });
       disconnectUnsubscribe = typeof offDisconnect === "function" ? offDisconnect : null;
     }
-    liveConnectedAt = state.time; setLive("ok");
+    liveTry = 0; liveConnectedAt = state.time; setLive("ok");
   } catch (e) {
     if (generation !== liveGeneration) return;
     clearLiveSubscriptions();
@@ -791,7 +812,10 @@ function step(dt, noDraw) {
   if (crowdGain && !state.muted) crowdGain.gain.value = 0.04 + (state.chant.home + state.chant.away) / 200 * 0.22 + (state.phase === "celebrate" ? 0.15 : 0);
   if (noDraw) { fx2Acc += dt; return; }
   updateReplay(); updateCamera(dt + fx2Acc);
-  if (!RSKIP || ++rFrame % RSKIP === 0) { renderer.render(scene, camera); window.__calls = renderer.info.render.calls; }
+  if (!RSKIP || ++rFrame % RSKIP === 0) {
+    renderer.render(scene, camera); window.__calls = renderer.info.render.calls;
+    window.V20Ops?.frame(performance.now());
+  }
   updateLabels(); updateFX2(dt + fx2Acc); fx2Acc = 0;
   hudAcc += dt; if (hudAcc > 0.2) { hudAcc = 0; refreshHUD(); }
 }
@@ -822,12 +846,13 @@ function setPaused(p) { state.paused = p; $("btn-pause").textContent = p ? T("ui
 function toggleHelp(on) { $("help").classList.toggle("on", on === undefined ? !$("help").classList.contains("on") : on); }
 function setBot(on) {
   // A real broadcast must never be quietly mixed with synthetic gifts/likes.
-  const allowed = Q.get("live") !== "1" || Q.get("host") === "1";
+  const allowed = Q.get("live") !== "1"; // even ?host=1 must not create LIVE demo bots
   botOn = Boolean(on && allowed);
   $("bot-toggle").checked = botOn;
   if (on && !allowed) console.warn("[LIVE] demo bots disabled in LIVE mode");
 }
 function boot() {
+  window.V20Ops?.init("inonu");
   buildSky(); buildPitch(); buildStands(); buildCity(); buildFans(); buildPlayers(); buildFX(); buildWorld2();
   { const qp = CONFIG.quality.names.indexOf(Q.get("q")); QUAL.locked = qp >= 0 || CLIP; applyQuality(qp >= 0 ? qp : CLIP ? 2 : IS_MOBILE ? 1 : 2); }
   TEAMS.forEach(drawCrest); if (Q.get("lang") === "en") CONFIG.lang = "en"; applyLang(); fit();
