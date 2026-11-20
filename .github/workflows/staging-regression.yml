@@ -20,6 +20,18 @@ jobs:
           bash build.sh
       - name: Source-anchored regression checks
         run: node --test tests/stabilization.test.mjs
+      - name: Archive exact assembled v1.6 staging game for offline review
+        uses: actions/upload-artifact@v4
+        with:
+          name: inonu-v16-staging-game
+          path: |
+            index.html
+            src/
+            build.sh
+            .nojekyll
+            tests/
+          if-no-files-found: error
+          retention-days: 30
 
   browser-smoke:
     runs-on: ubuntu-latest
@@ -40,6 +52,7 @@ jobs:
           timeout 150s node tests/staging-browser.mjs
           timeout 120s node tests/natural-soak-browser.mjs
           timeout 230s node tests/match-cycle-browser.mjs
+          timeout 120s node tests/visual-choreography-browser.mjs
       - name: Upload screenshots for review (even if browser checks fail)
         if: always()
         uses: actions/upload-artifact@v4
