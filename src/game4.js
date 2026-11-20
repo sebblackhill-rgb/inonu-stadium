@@ -64,7 +64,35 @@ function mergeNight() { try { const nb = JSON.parse(localStorage.getItem("inonu-
 function persist() { mergeNight(); if (!claimWriter()) return; try { localStorage.setItem("inonu-night", JSON.stringify({ at: Date.now(), rows: [...nightBook.entries()].map(([id, r]) => Object.assign({ id }, r)).sort((a, b) => b.pts - a.pts).slice(0, 300) })); } catch (e) {} }
 
 /* ================= helpers ================= */
-function addChant(team, v) { if (v > 0) { const gd = state.goals[team] - state.goals[other(team)]; v *= gd < 0 ? 1.3 : gd > 0 ? 0.85 : 1; if (state.phase === "celebrate") v *= 0.5; } state.chant[team] = clamp(state.chant[team] + v, 0, 100); }
+// v1.9: the stands respond to real rising chant momentum with a bounded
+// Mexican wave and short spectator prompt, without changing shot probability.
+const V19_WAVE = { last: { home: -100, away: -100 }, until: 0, team: null, count: 0 };
+function triggerV19Wave(team, preview = false) {
+  if (!TEAMS.includes(team) || (!preview && (state.phase !== "play" || state.paused))) return false;
+  if (!preview && state.time - V19_WAVE.last[team] < 25) return false;
+  if (!preview && state.mex && state.time - state.mex.t0 < 12) return false;
+  V19_WAVE.last[team] = state.time;
+  V19_WAVE.until = state.time + 3.6;
+  V19_WAVE.team = team; V19_WAVE.count++;
+  startMexWave(); // existing instanced stadium wave, no new geometry
+  return true;
+}
+if (Q.get("visualQA") === "1") {
+  window.__v19WavePreview = (team = "home") => triggerV19Wave(team, true);
+  window.__v19WaveState = () => ({ ...V19_WAVE });
+}
+function addChant(team, v) {
+  const before = state.chant[team];
+  if (v > 0) {
+    const gd = state.goals[team] - state.goals[other(team)];
+    v *= gd < 0 ? 1.3 : gd > 0 ? 0.85 : 1;
+    if (state.phase === "celebrate") v *= 0.5;
+  }
+  state.chant[team] = clamp(state.chant[team] + v, 0, 100);
+  if (v > 0 && before < 70 && state.chant[team] >= 70 &&
+      state.phase === "play" && teamFans[team] && teamFans[team].length >= 3)
+    triggerV19Wave(team);
+}
 function logLine(txt, team) { const el = document.createElement("div"); el.textContent = txt; if (team === "away") el.className = "away"; const L = $("log"); L.prepend(el); while (L.children.length > 5) L.lastChild.remove(); }
 function addPts(f, v) { if (!(v > 0)) return; f.mPts += v; f.nPts += v; nightBook.set(f.id, { name: f.name, team: f.team, pts: f.nPts }); }
 function goalChance(team) { const lvl = state.chant[team] / 100, mom = team === "home" ? state.momentum : -state.momentum; return clamp(0.1 + lvl * 0.6 + mom * 0.15, 0.05, 0.8); }
@@ -360,6 +388,8 @@ function renderFullTimePanel() {
 }
 function fullTime() {
   state.phase = "ft"; state.phaseT = 0; sfx("whistle", 3); later(0.6, () => sfx("fanfare"));
+  // A finite full-time light sweep on the existing result card, reduced-motion safe.
+  $("ftpanel")?.classList.add("v19-finale");
   const h = state.goals.home, a = state.goals.away, w = h === a ? null : (h > a ? "home" : "away");
   bumpSeries(w || "draw"); persist();
   if (w) { teamFans[w].forEach(f => f.jumpUntil = state.time + 10); teamFans[other(w)].forEach(f => f.sadUntil = state.time + 8); confetti(w); later(2, () => confetti(w)); }
@@ -372,6 +402,7 @@ function newMatch(restart) {
   state.penQ.length = 0; state.pen = null; ballFly = null; state.lastShot = null;
   TEAMS.forEach(t => { state.chant[t] = 10; state.throws[t].length = 0; state.offence[t] = 0; state.warnings[t] = 0; state.banUntil[t] = -1; state.coolUntil[t] = -1; });
   state.momentum = 0; users.forEach(f => { f.mPts = 0; f.mGiftD = 0; f.mGiftPts = 0; });
+  $("ftpanel").classList.remove("v19-finale");
   $("ftpanel").style.display = "none"; resetPositions(); state.phase = "play"; sfx("whistle", 2); showPop(T("start"), T("matchN", { n: state.matchNo }), "", 2.2, "small", 1);
 }
 /* ================= 2D overlay: popups, confetti, hearts, comic bursts ================= */
@@ -448,7 +479,11 @@ function renderV18Pressure() {
   const card = $("v18-pressure"); if (!card) return;
   let team = null, title = "", detail = "";
   const tr = !EN();
-  if (state.phase === "penalty" && state.pen && TEAMS.includes(state.pen.team)) {
+  if (state.phase === "play" && state.time < V19_WAVE.until && V19_WAVE.team) {
+    team = V19_WAVE.team;
+    title = tr ? "🌊 TRİBÜN DALGASI!" : "🌊 THE STANDS ARE WAVING!";
+    detail = tShort(team) + (tr ? " · DAVUL yaz · tezahürat yap" : " · type DRUM · keep chanting");
+  } else if (state.phase === "penalty" && state.pen && TEAMS.includes(state.pen.team)) {
     team = state.pen.team;
     title = tr ? "🎯 PENALTI HAZIR!" : "🎯 PENALTY READY!";
     detail = tShort(team) + " · " + (tr ? "tezahürat şansı artırır" : "chants improve the chance");
@@ -456,11 +491,20 @@ function renderV18Pressure() {
     team = TEAMS.find(t => inAttack(t) && state.chant[t] >= CONFIG.shots.minChant) || null;
     if (team) {
       const p = Math.round(goalChance(team) * 100);
-      title = "⚡ " + tShort(team) + (tr ? " HÜCUMDA" : " ATTACKING");
+      const closing = state.minute >= 80;
+      title = (closing ? "🔥 " : "⚡ ") + tShort(team) +
+        (tr ? (closing ? " SON HÜCUM!" : " HÜCUMDA") :
+          (closing ? " FINAL ATTACK!" : " ATTACKING"));
       detail = (tr ? "Gol şansı " : "Goal chance ") + p + "% · " + (tr ? "DAVUL / MEŞALE yaz" : "type DRUM / TORCH");
     }
+    if (!team && state.minute >= 80 && state.minute < CONFIG.matchMinutes) {
+      // Neutral instruction for both sides; no invented attacking advantage.
+      title = tr ? "⏱ SON DAKİKALAR" : "⏱ FINAL MINUTES";
+      detail = tr ? "1 / 2 yaz · takımını seç · tezahürat yap" :
+        "Type 1 / 2 to join · chant for your side";
+    }
   }
-  const visible = !!team;
+  const visible = !!team || !!title;
   card.classList.toggle("on", visible);
   if (!visible) return;
   card.classList.toggle("away", team === "away");

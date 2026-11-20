@@ -57,6 +57,23 @@ body.mobile #v18-pressure, body.clip #v18-pressure { left:80px; right:80px; bott
    already shows the same live attack information without obscuring football. */
 #attack { visibility:hidden !important; }
 
+/* v1.9: reused stadium wave + a restrained light sweep on full time.
+   Avoid any additional WebGL objects or overlapping mid-pitch panels. */
+#v18-pressure.on { animation:v19-chant-in .32s ease-out both; }
+#ftpanel.v19-finale { animation:v19-full-time 1.6s ease-out 1 both; }
+@keyframes v19-chant-in {
+  from { opacity:.25; transform:translateY(6px) scale(.98); }
+  to { opacity:1; transform:translateY(0) scale(1); }
+}
+@keyframes v19-full-time {
+  0% { box-shadow:0 0 0 rgba(255,220,110,0); transform:scale(.98); }
+  45% { box-shadow:0 0 32px rgba(255,220,110,.55); transform:scale(1.015); }
+  100% { box-shadow:0 0 10px rgba(255,220,110,.18); transform:scale(1); }
+}
+@media (prefers-reduced-motion:reduce) {
+  #v18-pressure.on, #ftpanel.v19-finale { animation:none !important; }
+}
+
 /* scoreboard */
 #score { position: absolute; top: 8px; left: 8px; right: 8px; height: 58px; border-radius: 14px; display: flex; align-items: stretch; overflow: hidden;
   background: linear-gradient(180deg, #1b1f2b, #0b0d13); border: 2px solid #3a4152; box-shadow: 0 8px 22px rgba(0,0,0,.55); }
