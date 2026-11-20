@@ -226,6 +226,10 @@ function holdForUnassigned(id, name, like, gift) {
 function safePositiveCount(v, max) {
   return typeof v === "number" && Number.isSafeInteger(v) && v >= 1 && v <= max ? v : null;
 }
+// Provider event IDs are separate from gift streak groups: one provider event
+// must never credit twice even after a reconnect or a newer browser callback.
+const v20EventIds = new Map();
+window.__v20EventCount = () => v20EventIds.size;
 window.handleLiveEvent = function (ev) {
   try {
     if (!ev) return;
@@ -234,6 +238,20 @@ window.handleLiveEvent = function (ev) {
   // LIVE scoring only receives mapped provider callbacks. Host preview
   // simulations must use a separate ?demo=1 tab, never the actual broadcast.
     if (ev.source === "tiktok" && !ev.userId) return; // no shared anonymous paid-credit identity
+    // Validate first; an invalid delivery must not poison a later corrected ID.
+    if (ev.source === "tiktok" && ev.type === "gift" &&
+      (safePositiveCount(ev.diamondCount ?? ev.giftDiamondCount ?? ev.giftValue, 1000000) === null ||
+       safePositiveCount(ev.repeatCount ?? 1, 100000) === null)) return;
+    if (ev.source === "tiktok" && ev.type === "like" &&
+      safePositiveCount(ev.likeCount ?? ev.count ?? 1, 100000) === null) return;
+    if (ev.source === "tiktok" && ev.eventId != null) {
+      const eid = String(ev.eventId).trim();
+      if (eid) {
+        if (v20EventIds.has(eid)) return { duplicate: true };
+        v20EventIds.set(eid, performance.now());
+        if (v20EventIds.size > 20000) v20EventIds.delete(v20EventIds.keys().next().value);
+      }
+    }
     lastLiveEvt = state.time;
     const id = String(ev.userId || ev.uniqueId || ev.username || "anon"), name = String(ev.username || ev.nickname || id).replace(/^@/, "").slice(0, 18);
     let f = users.get(id);
@@ -281,7 +299,7 @@ function streakDelta(id, gname, ev) {
   if (!s) { streaks.set(key, { max: rc, t: state.time }); if (streaks.size > 2000) streaks.delete(streaks.keys().next().value); return rc; }
   const gap = state.time - s.t; s.t = state.time;
   if (rc > s.max) { const d = rc - s.max; s.max = rc; return d; }
-  if (rc === 1 && (s.max === 1 || (!sid && gap > 1))) { if (!sid) s.max = 1; return 1; }   // singles feed / new combo
+  if (!sid && rc === 1 && (s.max === 1 || gap > 1)) { s.max = 1; return 1; }   // singles feed / new combo
   return 0;                                                        // duplicate or late lower count
 }
 /* gifts: diminishing ranking points + batched effects */
@@ -688,8 +706,8 @@ async function tryConnectPlayroom(manual) {
         likeCount: d.likeCount ?? 1,
         streakId: d.streakId || d.comboId || d.groupId || ""
       };
-      handleLiveEvent(mapped);
-      window.V20Ops?.event(raw,"forwarded");
+      const result=handleLiveEvent(mapped);
+      window.V20Ops?.event(raw,result?.duplicate ? "duplicate" : "forwarded");
       if (liveState !== "ok") setLive("ok");
     });
     liveUnsubscribe = typeof off === "function" ? off : null;
