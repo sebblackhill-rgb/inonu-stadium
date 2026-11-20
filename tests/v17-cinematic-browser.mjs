@@ -28,7 +28,18 @@ try {
      canvas:document.querySelectorAll('canvas').length,
      overflow:document.documentElement.scrollWidth-innerWidth};
   });
+  // Render the exact penalty camera for screenshot review, not the wide reset view.
+  await page.evaluate(()=>{
+    const s=window.__state; s.phase='penalty'; s.phaseT=0.2;
+    s.pen={team:'home',kicked:false}; s.ballZ=-1e3;
+    updateCamera(2); renderer.render(scene,camera);
+  });
   await page.screenshot({path:'browser-evidence/inonu-v17-penalty-framing.png',fullPage:true});
+  await page.evaluate(()=>{
+    const s=window.__state; s.phase='play'; s.chant.home=100; s.ballZ=-1e3;
+    updateCamera(2); renderer.render(scene,camera);
+  });
+  await page.screenshot({path:'browser-evidence/inonu-v17-attack-framing.png',fullPage:true});
   if(!report.penalty.enabled||report.penalty.mode!=='penalty'||
      report.attack.mode!=='attack'||report.wide.mode!=='wide'||
      !report.scoreUnchanged||report.canvas<1||report.overflow>4||errors.length)
