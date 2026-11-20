@@ -209,3 +209,23 @@ body.panel-hidden #hide-note { display: block; }
   #test-panel { max-height: none; }
   #test-panel { position: fixed; right: 8px; top: 8px; bottom: 8px; z-index: 30; width: min(300px, 86vw); flex: none; }
 }
+
+/* v1.8 participatory action cue: measured next-block progress, a free action
+   first. Sits above existing bottom rule strip and never captures input. */
+#v18-heave { position:absolute; bottom:112px; left:86px; right:86px; z-index:7;
+  border:1px solid #eebd4c; border-radius:13px; padding:6px 10px;
+  background:rgba(12,22,42,.88); color:#fff6d0; text-align:center;
+  box-shadow:0 5px 16px rgba(0,0,0,.3); pointer-events:none;
+  display:flex; flex-direction:column; align-items:center; gap:2px;
+  font-variant-numeric:tabular-nums; }
+#v18-heave.nile { border-color:#75beff; }
+#v18-heave.boss { border-color:#ffa165; background:rgba(64,20,14,.89); }
+#v18-heave.race { border-color:#f8e7a6; }
+#v18-heave.victory { border-color:#a8edbd; }
+#v18-heave-title { font-size:13px; font-weight:900; line-height:1.1; letter-spacing:.03em; }
+#v18-heave-detail { font-size:11px; color:#f7e5b4; line-height:1.15; font-weight:800; }
+.v18-track { width:100%; height:5px; background:rgba(0,0,0,.58); border-radius:4px; overflow:hidden; }
+#v18-heave-fill { display:block; width:0%; height:100%; background:linear-gradient(90deg,#ba7920,#ffe79a); }
+#v18-heave.nile #v18-heave-fill { background:linear-gradient(90deg,#2166a6,#9ee3ff); }
+#v18-heave.delivering { box-shadow:0 5px 16px rgba(0,0,0,.3),0 0 0 2px rgba(255,225,125,.45); }
+body.calm #v18-heave { transition:none; }
