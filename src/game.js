@@ -1972,6 +1972,15 @@ function workerTarget(u, out) {
   return out;
 }
 
+// v1.6 action-layer integration: workers on the same rope row share a
+// lightweight pull beat after a team heave. These are pose offsets on existing
+// instanced worker rigs, not new avatars or additional draw calls.
+function ropePullBeat(time, slot, lurch) {
+  if (!Number.isFinite(time) || !Number.isFinite(lurch)) return 0;
+  const energy = Math.max(0, Math.min(1, lurch));
+  const wave = Math.max(0, Math.sin(time * 9 - Math.floor(slot / 4) * 0.55));
+  return energy * (0.35 + wave * 0.65);
+}
 function poseWorker(u, t, moving, speed) {
   bindPose();
   rig.root.position.set(u.x, u.y, u.z);
@@ -1989,7 +1998,10 @@ function poseWorker(u, t, moving, speed) {
     rig.torso.rotation.x = 0.12 * f;
   } else if (u.onRope) {
     // hauling: lean into the rope over the shoulder, legs dug in
-    const heave = Math.max(0, (u.heaveT - now) / 520), hk = Math.sin(heave * Math.PI);
+    const heave = Math.max(0, (u.heaveT - now) / 520);
+    const solo = Math.sin(heave * Math.PI);
+    const group = ropePullBeat(t, u.slot, state.teams[u.team].lurch);
+    const hk = Math.max(solo, group * 0.72);
     const strain = 0.5 + 0.5 * Math.sin(t * 3.1 + ph);
     const lean = 0.42 + hk * 0.3 + strain * 0.05;
     rig.hips.rotation.x = lean * 0.45; rig.torso.rotation.x = lean * 0.55;
@@ -2102,6 +2114,9 @@ window.onBlocksPlaced = (id, newLayer) => {
   const y = Math.min(T.layers, CONFIG.layers) * LH + 0.3, s = layerSide(Math.min(li, CONFIG.layers - 1)) / 2;
   const zEdge = PC.z - s + 2 * s * (newLayer ? 1 : o.partial);
   for (let i = 0; i < 14; i++) dustPuff(SIDE[id] * rnd(0.3, s), y, zEdge + rnd(-0.6, 0.6), 1, 0xf2dcae, 2);
+  // Small placement confirmation for each delivered stone. Milestones retain
+  // their larger existing celebration, while routine deliveries stay subtle.
+  sparkle(SIDE[id] * Math.max(0.3, s * 0.45), y + 0.55, zEdge, 12, 0xffe09b, 2);
   sledges[id].block.scale.set(0.01, 0.01, 0.01); sledges[id].regrow = 0;
   delete deliveries[id];
 };
