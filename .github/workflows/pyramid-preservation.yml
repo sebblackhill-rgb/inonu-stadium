@@ -1,0 +1,39 @@
+name: Recover Pyramid hosted snapshot
+on:
+  push:
+    branches: [codex/stabilization-20261119]
+    paths:
+      - tools/recover_pyramid.py
+      - .github/workflows/pyramid-preservation.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  rescue:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch archived publicly hosted HTML and assets
+        id: fetch
+        continue-on-error: true
+        run: python3 tools/recover_pyramid.py
+      - name: Show manifest result
+        if: always()
+        run: |
+          if test -f pyramid-recovery/recovery-report.json; then
+            python3 -c "import json; x=json.load(open('pyramid-recovery/recovery-report.json')); print('recovery status:',x.get('status'),'html bytes:',x.get('htmlBytes'),'hash match:',x.get('sourceVerified'),'assets:',x.get('assetCount')); print('warnings:',x.get('warnings'))"
+          else
+            echo "No recovery report generated"
+          fi
+      - name: Save temporary recovery artifact for owner inspection
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pyramid-public-website-preservation
+          path: pyramid-recovery/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Mark capture unavailable without disguising failure
+        if: steps.fetch.outcome == 'failure'
+        run: echo "::warning title=Pyramid not recovered::Hosted URL unavailable or rejected; obtain original Grokbot workspace source."

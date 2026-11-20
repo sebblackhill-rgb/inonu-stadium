@@ -1,0 +1,53 @@
+name: Preserve Pyramid in isolated GitHub branch
+on:
+  push:
+    branches: [codex/stabilization-20261119]
+    paths:
+      - tools/prepare_pyramid_repo.py
+      - .github/workflows/pyramid-github-backup.yml
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download public hosted source
+        run: python3 tools/recover_pyramid.py
+      - name: Generate separate editable project, retaining exact raw served HTML
+        run: python3 tools/prepare_pyramid_repo.py pyramid-recovery/site/index.html "${RUNNER_TEMP}/pyramid-project"
+      - name: Check source syntax, provenance and structure before backup
+        run: |
+          node --check "${RUNNER_TEMP}/pyramid-project/src/game.js"
+          node --check "${RUNNER_TEMP}/pyramid-project/vendor/three.min.js"
+          cd "${RUNNER_TEMP}/pyramid-project"
+          node --test tests/source-integrity.test.mjs
+      - name: Push one-time orphan backup branch, never main or staging PR
+        env:
+          PYRAMID_BACKUP_REF: archive/pyramid-recovered-20261119
+        run: |
+          set -eu
+          if git ls-remote --exit-code --heads origin "${PYRAMID_BACKUP_REF}" >/dev/null; then
+            echo "A Pyramid backup already exists; refusing to overwrite"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan "${PYRAMID_BACKUP_REF}"
+          git rm -r -f -q --cached . || true
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -a "${RUNNER_TEMP}/pyramid-project/." .
+          git add -A
+          git commit -m "Preserve recovered Pyramid browser source (19 Nov 2026)"
+          git push origin "HEAD:refs/heads/${PYRAMID_BACKUP_REF}"
+          echo "Pyramid source safely backed up to independent orphan branch"
+      - name: Upload project ZIP for owner, regardless of push status
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pyramid-repo-ready-snapshot
+          path: ${{ runner.temp }}/pyramid-project/
+          if-no-files-found: warn
+          retention-days: 30

@@ -82,7 +82,17 @@ function flushJoins() {
 }
 const pickBuf = new Map(); let pickFlushT = 0, promptT = -9, promptDur = 0; const pickSeen = new Map();
 let promptMake = null;   // rebuilt on language switch so a visible prompt never stays in the old language
-function askPick(id, name, held) { const last = pickSeen.get(id) || -99; if (state.time - last < 8 && !held) return; pickSeen.set(id, state.time); pickBuf.set(id, { name, held: held || (pickBuf.get(id) || {}).held }); }
+function askPick(id, name, held) {
+  const last = pickSeen.get(id) ?? -99;
+  if (state.time - last < 8 && !held) return;
+  pickSeen.set(id, state.time);
+  // Prevent multi-hour streams from accumulating an unbounded prompt cooldown map.
+  if (pickSeen.size > 4000) {
+    for (const [key, t] of pickSeen) if (state.time - t > 120) pickSeen.delete(key);
+    while (pickSeen.size > 4000) pickSeen.delete(pickSeen.keys().next().value);
+  }
+  pickBuf.set(id, { name, held: held || (pickBuf.get(id) || {}).held });
+}
 function flushPicks() {
   if (!pickBuf.size || state.time - pickFlushT < 2.6) return; pickFlushT = state.time;
   const arr = [...pickBuf.entries()].filter(([id]) => !users.has(id)).map(e => e[1]); pickBuf.clear();   // viewers who joined meanwhile are not nagged
@@ -115,7 +125,7 @@ function doAction(f, kind) {
     if (cool) return;
     addChant(other(team), -4);                                   // distracts the celebrating rivals...
     const arr = state.throws[team]; arr.push(state.time); while (arr.length && state.time - arr[0] > R.window) arr.shift();
-    if (arr.length >= R.limit) { arr.length = 0; state.offence[team]++; state.coolUntil[team] = state.time + 1 + R.cooldown; const lvl = state.offence[team]; later(1.0, () => refereeWarning(team, lvl)); }   // ...but the ref is watching (explained ladder)
+    if (arr.length >= R.limit) { arr.length = 0; state.offence[team]++; state.coolUntil[team] = state.time + 1 + R.cooldown; const lvl = state.offence[team], generation = state.warningGeneration || 0; later(1.0, () => { if (generation === (state.warningGeneration || 0)) refereeWarning(team, lvl); }); }   // ...but the ref is watching (explained ladder)
     else if (arr.length === R.limit - 1) watchCue(team);
   }
 }
@@ -131,27 +141,68 @@ function refereeWarning(team, lvl) {
   cardT = state.time;
 }
 function joinFan(id, name, team) {
-  const f = addFan(id, name, team); if (!f) return null;
+  const f = addFan(id, name, team);
+  if (!f) {
+    // A full stand must provide visible feedback instead of silently rejecting a viewer.
+    logLine(CONFIG.lang === "tr" ? "Tribün dolu · diğer takımı deneyin" : "Stand full · try the other team", team);
+    return null;
+  }
   joinBuf[team].push(name); addChant(team, 2);
   const p = pending.get(id);
   if (p) { pending.delete(id);
     if (p.likes) { fanChant(f, Math.min(10, 0.5 * p.likes), "", true); hearts.push({ f, t: 0 }); }
-    const live = p.gifts.filter(g => state.time - g.t < 180); live.forEach(g => applyGift(f, g.val, g.unit, g.giftName, 1));
-    if (live.length) logLine(T("heldApplied", { n: name, t: tShort(team) }), team);
+    // Gift recognition does not expire with the temporary gameplay effect.
+    // Older gift effects are intentionally not replayed onto the current match.
+    let credited = 0, actionExpired = 0;
+    p.gifts.forEach(g => {
+      if (state.time - g.t < 180) {
+        applyGift(f, g.val, g.unit, g.giftName, g.count || 1);
+      } else {
+        f.gifts += g.val;
+        f.mGiftD += g.val;
+        const P = CONFIG.points;
+        const newPoints = Math.min(P.giftCapPerMatch, P.giftK * Math.sqrt(f.mGiftD));
+        addPts(f, newPoints - f.mGiftPts);
+        f.mGiftPts = newPoints;
+        actionExpired++;
+      }
+      credited += g.val;
+    });
+    if (credited) {
+      logLine(T("heldApplied", { n: name, t: tShort(team) }), team);
+      if (actionExpired) logLine(CONFIG.lang === "tr"
+        ? "@" + name + " · eski hediyeler sayıldı (efekt süresi doldu)"
+        : "@" + name + " · older gifts credited (effects expired)", team);
+    }
   }
   return f;
 }
 function holdForUnassigned(id, name, like, gift) {
   const p = pending.get(id) || { name, likes: 0, gifts: [], t: state.time };
   if (like) p.likes = Math.min(50, p.likes + like);
-  if (gift) { p.gifts.push(Object.assign({ t: state.time }, gift)); if (p.gifts.length > 5) p.gifts.shift(); }
+  if (gift) p.gifts.push(Object.assign({ t: state.time }, gift)); // never truncate recognized gift credit
   p.t = state.time; pending.set(id, p);
-  if (pending.size > 400) { const oldest = [...pending.entries()].sort((a, b) => a[1].t - b[1].t)[0]; pending.delete(oldest[0]); }
+  // Bound unassigned free activity without evicting someone whose gift is awaiting a team.
+  // Gift-bearing pending entries survive until claimed or the session ends.
+  if (pending.size > 400) {
+    const free = [...pending.entries()].filter(([, rec]) => rec.gifts.length === 0);
+    free.sort((a, b) => a[1].t - b[1].t);
+    for (const [key] of free) {
+      if (pending.size <= 400) break;
+      pending.delete(key);
+    }
+  }
   askPick(id, name, !!gift);
+}
+// Strict defensive counts: invalid values must not propagate NaN into chant or ball physics.
+function safePositiveCount(v, max) {
+  return typeof v === "number" && Number.isSafeInteger(v) && v >= 1 && v <= max ? v : null;
 }
 window.handleLiveEvent = function (ev) {
   try {
     if (!ev) return;
+    if (Q.get("live") === "1" && ev.source === "host" && Q.get("host") !== "1") return;
+    if (ev.source === "tiktok" && !ev.userId) return; // no shared anonymous paid-credit identity
     lastLiveEvt = state.time;
     const id = String(ev.userId || ev.uniqueId || ev.username || "anon"), name = String(ev.username || ev.nickname || id).replace(/^@/, "").slice(0, 18);
     let f = users.get(id);
@@ -162,17 +213,26 @@ window.handleLiveEvent = function (ev) {
       if (act) doAction(f, act);
       else fanChant(f, 3, jt ? "" : ev.comment);   // a typed team keyword chants as much as any other comment
     } else if (ev.type === "like") {
-      const n = Math.max(1, Math.min(15, Number(ev.likeCount || ev.count) || 1));
+      // Malformed counts must never turn into a legitimate one-like event.
+      // Clamp display/gameplay influence only after validating the raw count.
+      const rawLikes = ev.likeCount ?? ev.count ?? 1;
+      const validLikes = safePositiveCount(rawLikes, 100000);
+      if (validLikes === null) { console.warn("[LIVE] rejected malformed like count"); return; }
+      const n = Math.min(15, validLikes);
       if (!f) { holdForUnassigned(id, name, n, null); return; }
       fanChant(f, 0.5 * n, "", true); hearts.push({ f, t: 0 });
       if (state.time - f.likeWinT > 60) { f.likeWinT = state.time; f.likeWin = 0; }
       const pts = Math.min(CONFIG.points.likeCapPerMin - f.likeWin, CONFIG.points.likePts * n); if (pts > 0) { f.likeWin += pts; addPts(f, pts); }
     } else if (ev.type === "gift") {
-      const unit = Number(ev.diamondCount || ev.giftValue) || 1, gname = String(ev.giftName || "gift");
+      const unit = safePositiveCount(ev.diamondCount ?? ev.giftDiamondCount ?? ev.giftValue, 1000000);
+      const repeats = safePositiveCount(ev.repeatCount ?? 1, 100000);
+      if (unit === null || repeats === null) { console.warn("[LIVE] rejected malformed gift value"); return; }
+      const gname = String(ev.giftName || "gift").slice(0, 128);
+      // Streak settlement still requires a confirmed real provider contract.
       // streaks: repeatCount may be cumulative while a combo is running -> only count the new part
       const delta = streakDelta(id, gname, ev);
       if (delta <= 0) return;
-      if (!f) { holdForUnassigned(id, name, 0, { val: unit * delta, unit, giftName: gname }); return; }
+      if (!f) { holdForUnassigned(id, name, 0, { val: unit * delta, unit, giftName: gname, count: delta }); return; }
       applyGift(f, unit * delta, unit, gname, delta, Number(ev.repeatCount) || 1);
     }
   } catch (e) { console.error(e); }
@@ -261,8 +321,18 @@ function shotResult(bf) {
   if (bf.scoreIt) goal(bf.team);
   else { showPop(Math.random() < 0.5 ? T("save") : T("miss"), state.lastShot ? T("goalWhy", state.lastShot) : "", bf.team, 1.3, "small", 1); sfx("groan"); state.phase = "play"; state.ballZ = attackDir(bf.team) * (PL - 8); state.momentum *= 0.4; }
 }
+// v1.6: a goal has a distinct one-second score pulse, separate from the
+// existing confetti and replay. Pure presentation; no score/penalty changes.
+function pulseGoalScore(team) {
+  const el = $("score"); if (!el) return;
+  el.classList.remove("goal-home", "goal-away");
+  // Restart CSS beat even when the same team scores twice.
+  void el.offsetWidth;
+  el.classList.add(team === "home" ? "goal-home" : "goal-away");
+}
 function goal(team) {
-  state.goals[team]++; state.lastScorer = team; state.phase = "celebrate"; state.phaseT = 0; state.shake = 1;
+  state.goals[team]++; state.lastScorer = team;
+  pulseGoalScore(team); state.phase = "celebrate"; state.phaseT = 0; state.shake = 1;
   showPop(T("goal"), T("scored", { t: tName(team) }) + (state.lastShot ? "  " + T("goalWhy", state.lastShot) : ""), team, 3, "", 3);
   sfx("roar"); later(0.2, () => sfx("chant", team));
   goals[attackDir(team)].net.userData.shake = 1;
@@ -272,11 +342,9 @@ function goal(team) {
   confetti(team);
 }
 function topFans(list, key, n) { return list.filter(f => f[key] > 0).sort((a, b) => b[key] - a[key]).slice(0, n); }
-function fullTime() {
-  state.phase = "ft"; state.phaseT = 0; sfx("whistle", 3); later(0.6, () => sfx("fanfare"));
+function renderFullTimePanel() {
+  // Pure UI redraw: language switches must never award a second series result.
   const h = state.goals.home, a = state.goals.away, w = h === a ? null : (h > a ? "home" : "away");
-  bumpSeries(w || "draw"); persist();
-  if (w) { teamFans[w].forEach(f => f.jumpUntil = state.time + 10); teamFans[other(w)].forEach(f => f.sadUntil = state.time + 8); confetti(w); later(2, () => confetti(w)); }
   const all = teamFans.home.concat(teamFans.away);
   const motm = topFans(w ? teamFans[w] : all, "mPts", 1)[0], top = topFans(all, "mPts", 3);
   const esc = s => String(s).replace(/[<>&"]/g, "");
@@ -289,9 +357,17 @@ function fullTime() {
     "<div class='nx' id='ft-next'></div>";
   TEAMS.forEach(t => { const c = $("ftc-" + t); if (c) c.getContext("2d").drawImage($("crest-" + t), 0, 0); });
   P.style.display = "block";
+}
+function fullTime() {
+  state.phase = "ft"; state.phaseT = 0; sfx("whistle", 3); later(0.6, () => sfx("fanfare"));
+  const h = state.goals.home, a = state.goals.away, w = h === a ? null : (h > a ? "home" : "away");
+  bumpSeries(w || "draw"); persist();
+  if (w) { teamFans[w].forEach(f => f.jumpUntil = state.time + 10); teamFans[other(w)].forEach(f => f.sadUntil = state.time + 8); confetti(w); later(2, () => confetti(w)); }
+  renderFullTimePanel();
   showPop(T("ft"), "", w || "", 1.6, "small", 4);
 }
 function newMatch(restart) {
+  state.warningGeneration = (state.warningGeneration || 0) + 1;
   state.goals.home = state.goals.away = 0; state.minute = 0; state.phaseT = 0; if (!restart) state.matchNo++;
   state.penQ.length = 0; state.pen = null; ballFly = null; state.lastShot = null;
   TEAMS.forEach(t => { state.chant[t] = 10; state.throws[t].length = 0; state.offence[t] = 0; state.warnings[t] = 0; state.banUntil[t] = -1; state.coolUntil[t] = -1; });
@@ -420,6 +496,7 @@ function applyLang() {
   $("deskhint").textContent = T("deskHint");
   $("celebrate").dataset.team = ""; $("replay-t").textContent = T("replay"); if (WX.scoreCanvas) drawScoreboard(true);
   if (liveState) setLive(liveState);
+  if (state.phase === "ft") renderFullTimePanel();
 }
 function drawCrest(t) {
   const g = $("crest-" + t).getContext("2d"), C = CONFIG.teams[t];
@@ -465,7 +542,17 @@ window.__seedCrowd = seedCrowd;
 
 /* ================= Playroom TikTok LIVE bridge (?live=1) with honest status ================= */
 let liveState = null, lastLiveEvt = -1, liveConnectedAt = -1;
-let liveTry = 0, liveRetryAt = 0, liveTimer = null, liveHooked = false; window.__liveAttempts = [];
+let liveTry = 0, liveRetryAt = 0, liveTimer = null; window.__liveAttempts = [];
+// The documented Playroom event listener returns an unsubscribe function.
+// Generation gates also suppress stale callbacks if a transport cannot unsubscribe.
+let liveGeneration = 0, liveUnsubscribe = null, disconnectUnsubscribe = null;
+function clearLiveSubscriptions() {
+  for (const off of [liveUnsubscribe, disconnectUnsubscribe]) {
+    if (typeof off === "function") { try { off(); } catch (e) { console.warn("[LIVE] unsubscribe", e); } }
+  }
+  liveUnsubscribe = null;
+  disconnectUnsubscribe = null;
+}
 const RETRY_SCALE = +(Q.get("retryScale") || 1);   // test hook: shrink the backoff delays
 function setLive(st, extra) {
   const tick = extra === "tick"; liveState = st; window.__liveStatus = st;
@@ -489,25 +576,50 @@ function liveWatchdog() {
 async function tryConnectPlayroom(manual) {
   if (Q.get("live") !== "1") return;
   if (manual) liveTry = 0;
-  clearTimeout(liveTimer); liveRetryAt = 0; liveTry++; window.__liveAttempts.push(performance.now());
+  const generation = ++liveGeneration;
+  clearTimeout(liveTimer); liveRetryAt = 0; clearLiveSubscriptions();
+  liveTry++; window.__liveAttempts.push(performance.now());
   setLive("connecting");
   try {
-    const src = window.__bridgeSrc || Q.get("bridgeSrc") || "https://unpkg.com/playroomkit/multiplayer.js";
+    const src = window.__bridgeSrc || Q.get("bridgeSrc") || "https://cdn.joinplayroom.com/playroomkit/multiplayer.full.umd.js";
     document.querySelectorAll("script[data-bridge]").forEach(s => s.remove());
     await new Promise((res, rej) => { const s = document.createElement("script"); s.dataset.bridge = "1"; s.src = src; s.onload = res; s.onerror = () => rej(new Error("bridge script failed to load")); document.head.appendChild(s); setTimeout(() => rej(new Error("bridge load timeout")), 20000); });
     const mod = window.Playroom || window.PlayroomKit || window;
     const insertCoin = mod.insertCoin || window.insertCoin, onTikTokLiveEvent = mod.onTikTokLiveEvent || window.onTikTokLiveEvent, onDisconnect = mod.onDisconnect || window.onDisconnect;
     if (typeof insertCoin !== "function" || typeof onTikTokLiveEvent !== "function") throw new Error("Playroom API not found");
     await Promise.race([insertCoin({ liveMode: "tiktok" }), new Promise((_, rej) => setTimeout(() => rej(new Error("insertCoin timeout")), 60000))]);
-    if (!liveHooked) { liveHooked = true;
-    onTikTokLiveEvent((event) => { const d = (event && event.data) || event || {}; const raw = String((event && event.type) || d.type || "chat").toLowerCase();
+    if (generation !== liveGeneration) return; // an older attempt finished too late
+    const off = onTikTokLiveEvent((event) => {
+      if (generation !== liveGeneration) return;
+      const d = (event && event.data) || {}, raw = String((event && event.type) || "").toLowerCase();
+      if (!["gift", "chat", "like"].includes(raw)) return; // follows/shares must not become free chants
+      if (!d.userId) { console.warn("[LIVE] ignored event without stable viewer ID"); return; }
+      const mapped = {
+        type: raw, source: "tiktok",
+        eventId: d.msgId || d.eventId || null,
+        userId: String(d.userId),
+        username: d.name || d.username || d.nickName || d.uniqueId || "viewer",
+        comment: d.comment || d.content || "",
+        giftName: d.giftName || "",
+        diamondCount: d.giftDiamondCount ?? d.diamondCount ?? d.giftValue,
+        repeatCount: d.repeatCount ?? 1,
+        likeCount: d.likeCount ?? 1,
+        streakId: d.streakId || d.comboId || d.groupId || ""
+      };
+      handleLiveEvent(mapped);
       if (liveState !== "ok") setLive("ok");
-      handleLiveEvent({ type: raw.includes("gift") ? "gift" : raw.includes("like") ? "like" : "chat", userId: d.userId || d.uniqueId || d.username, username: d.username || d.nickName || d.uniqueId || "viewer",
-        comment: d.comment || d.content || "", giftName: d.giftName || "", diamondCount: d.diamondCount || d.giftValue || 1, repeatCount: d.repeatCount || 1, likeCount: d.likeCount || 1, streakId: d.streakId || d.comboId || d.groupId || "" }); });
-    if (typeof onDisconnect === "function") onDisconnect(() => setLive("lost"));
-    window.addEventListener("offline", () => setLive("lost")); }
+    });
+    liveUnsubscribe = typeof off === "function" ? off : null;
+    if (typeof onDisconnect === "function") {
+      const offDisconnect = onDisconnect(() => {
+        if (generation === liveGeneration) setLive("lost");
+      });
+      disconnectUnsubscribe = typeof offDisconnect === "function" ? offDisconnect : null;
+    }
     liveConnectedAt = state.time; setLive("ok");
   } catch (e) {
+    if (generation !== liveGeneration) return;
+    clearLiveSubscriptions();
     console.warn("[Playroom] not connected (try " + liveTry + "):", e && e.message);
     if (liveTry < CONFIG.live.maxTries) { const B = CONFIG.live.backoff, d = B[Math.min(liveTry - 1, B.length - 1)] * 1000 * RETRY_SCALE; (window.__liveDelays = window.__liveDelays || []).push(d); liveRetryAt = performance.now() + d; liveTimer = setTimeout(() => tryConnectPlayroom(false), d); }
     setLive("fail");
@@ -604,7 +716,13 @@ setInterval(() => { if (document.hidden && !CLIP) advance(performance.now(), fal
 document.addEventListener("visibilitychange", () => { if (!document.hidden) lastT = 0; });
 function setPaused(p) { state.paused = p; $("btn-pause").textContent = p ? T("ui").resume : T("ui").pause; if (p) $("clock").textContent = "⏸ " + $("clock").textContent; }
 function toggleHelp(on) { $("help").classList.toggle("on", on === undefined ? !$("help").classList.contains("on") : on); }
-function setBot(on) { botOn = on; $("bot-toggle").checked = on; }
+function setBot(on) {
+  // A real broadcast must never be quietly mixed with synthetic gifts/likes.
+  const allowed = Q.get("live") !== "1" || Q.get("host") === "1";
+  botOn = Boolean(on && allowed);
+  $("bot-toggle").checked = botOn;
+  if (on && !allowed) console.warn("[LIVE] demo bots disabled in LIVE mode");
+}
 function boot() {
   buildSky(); buildPitch(); buildStands(); buildCity(); buildFans(); buildPlayers(); buildFX(); buildWorld2();
   { const qp = CONFIG.quality.names.indexOf(Q.get("q")); QUAL.locked = qp >= 0 || CLIP; applyQuality(qp >= 0 ? qp : CLIP ? 2 : IS_MOBILE ? 1 : 2); }
@@ -612,13 +730,13 @@ function boot() {
   claimWriter(); logLine(T("rivalTonight", { t: tName("away") }));
   camera.up.set(1, 0, 0); camera.position.set(CAMX, CAMY, 0); camTarget.set(LOOKX, 0, 0); camera.lookAt(camTarget);
   const who = () => { const n = $("fake-user").value.trim() || "pablo"; return { userId: "local:" + n.toLowerCase(), username: n }; };
-  $("btn-send").onclick = () => handleLiveEvent(Object.assign({ type: "chat", comment: $("fake-comment").value }, who()));
+  $("btn-send").onclick = () => handleLiveEvent(Object.assign({ source: "host", type: "chat", comment: $("fake-comment").value }, who()));
   $("fake-comment").addEventListener("keydown", e => { if (e.key === "Enter") $("btn-send").click(); });
-  $("btn-like").onclick = () => handleLiveEvent(Object.assign({ type: "like", likeCount: 5 }, who()));
-  $("btn-rose").onclick = () => handleLiveEvent(Object.assign({ type: "gift", giftName: "Rose", diamondCount: 1 }, who()));
-  $("btn-med").onclick = () => handleLiveEvent(Object.assign({ type: "gift", giftName: "Donut", diamondCount: 30 }, who()));
-  $("btn-big").onclick = () => handleLiveEvent(Object.assign({ type: "gift", giftName: "Party", diamondCount: 300 }, who()));
-  $("btn-lion").onclick = () => handleLiveEvent(Object.assign({ type: "gift", giftName: "Lion", diamondCount: 1500 }, who()));
+  $("btn-like").onclick = () => handleLiveEvent(Object.assign({ source: "host", type: "like", likeCount: 5 }, who()));
+  $("btn-rose").onclick = () => handleLiveEvent(Object.assign({ source: "host", type: "gift", giftName: "Rose", diamondCount: 1 }, who()));
+  $("btn-med").onclick = () => handleLiveEvent(Object.assign({ source: "host", type: "gift", giftName: "Donut", diamondCount: 30 }, who()));
+  $("btn-big").onclick = () => handleLiveEvent(Object.assign({ source: "host", type: "gift", giftName: "Party", diamondCount: 300 }, who()));
+  $("btn-lion").onclick = () => handleLiveEvent(Object.assign({ source: "host", type: "gift", giftName: "Lion", diamondCount: 1500 }, who()));
   $("bot-rate").oninput = () => { $("bot-rate-val").textContent = $("bot-rate").value + "/s"; };
   $("bot-toggle").onchange = () => setBot($("bot-toggle").checked);
   $("mute").onclick = (e) => { e.stopPropagation(); if (!state.muted && audioState() !== "running") setMuted(false); else setMuted(!state.muted); };
@@ -631,14 +749,14 @@ function boot() {
   $("btn-restart").onclick = () => { newMatch(true); };
   $("help").onclick = () => toggleHelp(false);
   if (Q.get("help") === "1") toggleHelp(true);
-  $("btn-reset").onclick = () => { resetStore(); users.forEach(f => f.nPts = 0); refreshHUD(); };
+  $("btn-reset").onclick = () => { if (!window.confirm(CONFIG.lang === "tr" ? "Seri ve gece puanları silinsin mi?" : "Clear the series and tonight’s supporter scores?")) return; resetStore(); users.forEach(f => f.nPts = 0); refreshHUD(); };
   $("btn-newuser").onclick = () => { $("fake-user").value = "izleyici_" + Math.floor(Math.random() * 9000 + 1000); };
   $("panel-btn").onclick = (e) => { e.stopPropagation(); document.body.classList.toggle("panel-hidden"); fit(); };
   window.addEventListener("keydown", e => { if (/input|textarea/i.test(e.target.tagName)) return; const k = e.key.toLowerCase();
     if (k === "h") { document.body.classList.toggle("panel-hidden"); fit(); } else if (k === "m") { if (!state.muted && audioState() !== "running") setMuted(false); else setMuted(!state.muted); }
     else if (k === "l") { CONFIG.lang = CONFIG.lang === "tr" ? "en" : "tr"; applyLang(); refreshHUD(); } else if (k === "p") setPaused(!state.paused); else if (e.key === "?" || k === "/") toggleHelp(); });
   window.addEventListener("resize", fit);
-  if (IS_MOBILE || window.innerWidth < 860) { document.body.classList.add("panel-hidden"); fit(); }
+  if (IS_MOBILE || window.innerWidth < 860 || Q.get("live") === "1") { document.body.classList.add("panel-hidden"); fit(); }
   if (Q.get("panel") === "0") { document.body.classList.add("panel-hidden"); fit(); }
   $("mute").style.display = "flex";
   if (!CLIP && Q.get("live") !== "1" && Q.get("bot") !== "1" && Q.get("demo") !== "0") {
