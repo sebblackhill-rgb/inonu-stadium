@@ -1,7 +1,7 @@
 name: Staging regression checks
 on:
   push:
-    branches: [codex/stabilization-20261119, codex/v17-inonu-cinematic-20261120, codex/v18-gameplay-inonu-20261120, codex/v19-inonu-rally-20261120, codex/v20-release-inonu-20261120]
+    branches: [codex/stabilization-20261119, codex/v17-inonu-cinematic-20261120, codex/v18-gameplay-inonu-20261120, codex/v19-inonu-rally-20261120, codex/v20-release-inonu-20261120, codex/v201-desktop-inonu-20261120]
   pull_request:
     branches: [main, codex/stabilization-20261119]
 permissions:
@@ -22,10 +22,11 @@ jobs:
         run: |
           node --test tests/stabilization.test.mjs
           node --test tests/v20-ops-contract.test.mjs
-      - name: Archive exact assembled v2.0 staging game for offline review
+          node --test tests/v201-rehearsal-contract.test.mjs
+      - name: Archive exact assembled v2.0.1 rehearsal staging game for offline review
         uses: actions/upload-artifact@v4
         with:
-          name: inonu-v20-staging-game
+          name: inonu-v201-desktop-game
           path: |
             index.html
             src/
@@ -60,6 +61,7 @@ jobs:
           timeout 150s node tests/v19-finale-browser.mjs
           timeout 150s node tests/v20-obs-browser.mjs
           timeout 150s node tests/v20-live-mock-browser.mjs
+          timeout 150s node tests/v201-desktop-browser.mjs
       - name: Upload screenshots for review (even if browser checks fail)
         if: always()
         uses: actions/upload-artifact@v4
