@@ -17,13 +17,13 @@ try{
    const s=window.__state,before=JSON.stringify(s.goals),card=document.getElementById('v18-pressure');
    s.phase='penalty';s.pen={team:'home',kicked:false};window.__v18Pressure();
    const penalty={visible:card.classList.contains('on'),head:document.getElementById('v18-pressure-head').textContent};
-   s.phase='play';s.pen=null;s.ballZ=-1000;s.chant.home=100;window.__v18Pressure();
+   s.phase='play';s.pen=null;s.ballZ=-PL*0.75;s.chant.home=100;window.__v18Pressure();
    const attack={visible:card.classList.contains('on'),head:document.getElementById('v18-pressure-head').textContent,
      detail:document.getElementById('v18-pressure-detail').textContent};
    s.chant.home=0;s.ballZ=0;window.__v18Pressure();
    const hidden=!card.classList.contains('on');
-   s.phase='play';s.chant.home=100;s.ballZ=-1000;window.__v18Pressure();
-   updateCamera(1.0);renderer.render(scene,camera);
+   s.phase='play';s.chant.home=100;s.ballZ=-PL*0.75;window.__v18Pressure();
+   updateCamera(0.5);updateCamera(0.5);updateCamera(0.5);renderer.render(scene,camera);
    return {penalty,attack,hidden,noScoreChange:before===JSON.stringify(s.goals),
      canvas:document.querySelectorAll('canvas').length,
      overflow:document.documentElement.scrollWidth-innerWidth};
