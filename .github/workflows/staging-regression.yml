@@ -19,7 +19,8 @@ jobs:
           for f in src/*.js; do node --check "$f"; done
           bash build.sh
       - name: Source-anchored regression checks
-        run: node --test tests/stabilization.test.mjs
+        run: |
+          node --test tests/stabilization.test.mjs
           node --test tests/v20-ops-contract.test.mjs
       - name: Archive exact assembled v2.0 staging game for offline review
         uses: actions/upload-artifact@v4
