@@ -442,7 +442,34 @@ function updateLabels() {
   });
 }
 const escH = s => String(s).replace(/[<>&"]/g, "");
+// v1.8: situational objective gives commenters a useful next move.
+ // Pure presentation; never changes goalChance, shot odds, penalties or supporter credit.
+function renderV18Pressure() {
+  const card = $("v18-pressure"); if (!card) return;
+  let team = null, title = "", detail = "";
+  const tr = !EN();
+  if (state.phase === "penalty" && state.pen && TEAMS.includes(state.pen.team)) {
+    team = state.pen.team;
+    title = tr ? "🎯 PENALTI HAZIR!" : "🎯 PENALTY READY!";
+    detail = tShort(team) + " · " + (tr ? "tezahürat şansı artırır" : "chants improve the chance");
+  } else if (state.phase === "play") {
+    team = TEAMS.find(t => inAttack(t) && state.chant[t] >= CONFIG.shots.minChant) || null;
+    if (team) {
+      const p = Math.round(goalChance(team) * 100);
+      title = "⚡ " + tShort(team) + (tr ? " HÜCUMDA" : " ATTACKING");
+      detail = (tr ? "Gol şansı " : "Goal chance ") + p + "% · " + (tr ? "DAVUL / MEŞALE yaz" : "type DRUM / TORCH");
+    }
+  }
+  const visible = !!team;
+  card.classList.toggle("on", visible);
+  if (!visible) return;
+  card.classList.toggle("away", team === "away");
+  if ($("v18-pressure-head").textContent !== title) $("v18-pressure-head").textContent = title;
+  if ($("v18-pressure-detail").textContent !== detail) $("v18-pressure-detail").textContent = detail;
+}
+window.__v18Pressure = renderV18Pressure;
 function refreshHUD() {
+  renderV18Pressure();
   $("goals").textContent = state.goals.home + " - " + state.goals.away;
   const stop = state.minute >= CONFIG.matchMinutes && (state.penQ.length || state.phase === "penalty");
   $("clock").textContent = state.phase === "ft" ? T("ft") : (state.minute >= CONFIG.matchMinutes ? "90+'" : Math.floor(state.minute) + "'") + (stop ? " " + T("stoppage") : "");
