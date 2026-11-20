@@ -164,3 +164,21 @@ test('shared portfolio objective shows the right phase, milestone and countdown 
  cfg.lang='tr';assert.match(c.missionModel(s,cfg).main,/PİRAMİT TAMAMLANDI/);
  s.phase='build';assert.match(c.missionModel(s,cfg).main,/KAT 10/);
 });
+
+test('v1.6 coordinated hauling only activates on a team heave and stays bounded',()=>{
+ const c=context(section('function ropePullBeat(time, slot, lurch) {','function poseWorker(u, t, moving, speed) {'),{});
+ for(const time of [0,0.5,1,4,14])for(const row of [0,4,8,24]){
+   assert.equal(c.ropePullBeat(time,row,0),0,'idle crew must not show group effort');
+   for(const energy of [0.2,0.6,1,2]){
+     const a=c.ropePullBeat(time,row,energy);
+     assert(a>=0&&a<=1,'bounded joint effort '+a);
+   }
+ }
+ const row0=c.ropePullBeat(0.2,0,1);
+ const row2=c.ropePullBeat(0.2,8,1);
+ assert.notEqual(row0,row2,'rope rows should have visibly staggered effort');
+ assert.equal(c.ropePullBeat(NaN,0,1),0);
+ assert.equal(c.ropePullBeat(1,0,NaN),0);
+ assert(source.includes('const hk = Math.max(solo, group * 0.72)'));
+ assert(source.includes('sparkle(SIDE[id] * Math.max(0.3, s * 0.45)'));
+});
