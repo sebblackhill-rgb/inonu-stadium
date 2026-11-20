@@ -37,6 +37,22 @@ body.mobile #stage, body.clip #stage { border-radius: 0; box-shadow: none; }
 .lab.amigo { background: linear-gradient(180deg,#fff3b0,#e3a826); color: #2a1600; text-shadow: none; font-size: 11px; border: 1px solid #fff7cf; }
 .lab .say { display: block; font-size: 9px; font-weight: 700; color: #ffe27a; max-width: 96px; overflow: hidden; text-overflow: ellipsis; }
 
+/* v1.8 viewer-focused attack card: one concise instruction / real chance.
+   Positioned above lower join legend, not the scoreboard or ball. */
+#v18-pressure { position:absolute; left:112px; right:112px; bottom:155px; z-index:7;
+  display:flex; flex-direction:column; align-items:center; gap:2px;
+  border:2px solid #e9d18e; border-radius:12px; padding:7px 10px;
+  text-align:center; background:rgba(8,12,23,.9); box-shadow:0 5px 18px rgba(0,0,0,.45);
+  opacity:0; transform:translateY(8px); transition:opacity .2s ease,transform .2s ease; pointer-events:none;
+  visibility:hidden; }
+#v18-pressure.on { visibility:visible; opacity:1; transform:translateY(0); }
+#v18-pressure.away { border-color:var(--ahi,#ffcc22); }
+#v18-pressure .headline { font-size:15px; font-weight:900; color:#ffe4a5; line-height:1.2; }
+#v18-pressure .detail { font-size:11px; font-weight:800; color:#fff; line-height:1.25; }
+body.mobile #v18-pressure, body.clip #v18-pressure { left:80px; right:80px; bottom:148px; }
+@media (prefers-reduced-motion:reduce) { #v18-pressure { transition:none; transform:none; } }
+@media (max-height:700px) { #v18-pressure { bottom:136px; } }
+
 /* scoreboard */
 #score { position: absolute; top: 8px; left: 8px; right: 8px; height: 58px; border-radius: 14px; display: flex; align-items: stretch; overflow: hidden;
   background: linear-gradient(180deg, #1b1f2b, #0b0d13); border: 2px solid #3a4152; box-shadow: 0 8px 22px rgba(0,0,0,.55); }
@@ -228,6 +244,10 @@ body.mobile #test-panel { position: fixed; right: 8px; bottom: 8px; z-index: 20;
       <div id="board"><h4 id="board-t">🎤 BU MAÇ</h4><div id="board-rows"></div></div>
       <div id="risk"></div><div id="penq"></div><div id="attack"></div><div id="gifts"></div><div id="prompt"></div>
       <div id="ftpanel"></div>
+      <div id="v18-pressure" class="home" role="status" aria-live="off">
+        <span class="headline" id="v18-pressure-head"></span>
+        <span class="detail" id="v18-pressure-detail"></span>
+      </div>
       <div id="toast"></div>
       <div id="card"></div>
       <div id="pop"><div class="big" id="pop-big"></div><div class="sub" id="pop-sub"></div></div>
