@@ -121,3 +121,20 @@ test('LIVE presentation and restart safeguards remain enabled',()=>{
   assert(src.includes('window.innerWidth < 860 || Q.get("live") === "1"'));
   assert(src.includes('demo bots disabled in LIVE mode'));
 });
+
+test('v1.6 goal scoreboard pulse is a visual-only restartable cue',()=>{
+ const start=src.indexOf('function pulseGoalScore(team) {');
+ const end=src.indexOf('function goal(team) {',start);
+ assert(start>=0&&end>start);
+ const classes=new Set(), ops=[];
+ const el={offsetWidth:540,classList:{
+   remove:(...names)=>{names.forEach(n=>classes.delete(n));ops.push('remove')},
+   add:n=>{classes.add(n);ops.push('add:'+n)}
+ }};
+ const c={$:id=>id==='score'?el:null};
+ vm.createContext(c);vm.runInContext(src.slice(start,end),c);
+ c.pulseGoalScore('home');assert(classes.has('goal-home')&&!classes.has('goal-away'));
+ c.pulseGoalScore('home');assert.equal(ops.filter(x=>x==='add:goal-home').length,2);
+ c.pulseGoalScore('away');assert(classes.has('goal-away')&&!classes.has('goal-home'));
+ assert(src.includes('pulseGoalScore(team);'));
+});
