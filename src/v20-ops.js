@@ -60,7 +60,7 @@
       webgl:{lost,restored}, viewport:{
         width:innerWidth,height:innerHeight,dpr:Math.round((devicePixelRatio||1)*10)/10},
       warning:lost>restored?"WEBGL_CONTEXT_LOST":
-        (n>=90 && p95>50?"RENDER_P95_OVER_50MS":
+        (n>=10 && p95>50?"RENDER_P95_OVER_50MS":
         (mode==="live"&&["down","lost","fail","disconnected"].includes(connection)?"LIVE_BRIDGE_DOWN":
         (mode==="live"&&eventAge!==null&&eventAge>90?"NO_RECENT_PROVIDER_EVENT":"NONE")))
     };
