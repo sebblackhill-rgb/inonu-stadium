@@ -2798,16 +2798,29 @@ function seedCrowd(n) {
    -> live (green, last event Ns ago; amber when quiet > 90 s) or down (bounded retries 10 s / 30 s / 60 s, then host Retry).
    Bots are never substituted in live mode. */
 const RETRY_S = [10, 30, 60];
-let pr = { subscribed: false, loading: null, retryTimer: null, generation: 0, unsubscribe: null, inFlight: false };
+let pr = { subscribed: false, loading: null, retryTimer: null, generation: 0,
+  unsubscribe: null, disconnectOff: null, inFlight: false };
+function v20Timeout(promise,ms,label) {
+  return new Promise((resolve,reject)=>{
+    const timer=setTimeout(()=>reject(new Error(label+" timed out after "+ms+"ms")),ms);
+    Promise.resolve(promise).then(v=>{clearTimeout(timer);resolve(v)},
+      err=>{clearTimeout(timer);reject(err)});
+  });
+}
 function clearPlayroomListener() {
   if (typeof pr.unsubscribe === "function") {
     try { pr.unsubscribe(); } catch (e) { console.warn("[live] unsubscribe failed", e); }
   }
+  if (typeof pr.disconnectOff === "function") {
+    try { pr.disconnectOff(); } catch (_) {}
+  }
+  pr.disconnectOff = null;
   pr.unsubscribe = null;
   pr.subscribed = false;
 }
 function setConn(st, why) {
   state.conn.st = st;
+  window.V20Ops?.link(st);
   if (why) diag({ outcome: "info", src: "live", type: "connection", reason: st + ": " + why });
 }
 function scheduleRetry() {
@@ -2818,9 +2831,16 @@ function scheduleRetry() {
 }
 function loadPlayroom() {
   if (pr.loading) return pr.loading;
-  pr.loading = new Promise((resolve, reject) => {
-    const s = document.createElement("script"); s.src = "https://cdn.joinplayroom.com/playroomkit/multiplayer.full.umd.js";
-    s.onload = resolve; s.onerror = () => { pr.loading = null; s.remove(); reject(new Error("could not load the Playroom Kit script")); }; document.head.appendChild(s);
+  pr.loading = new Promise((resolve,reject)=>{
+    const s=document.createElement("script");
+    s.src="https://cdn.joinplayroom.com/playroomkit/multiplayer.full.umd.js";
+    let settled=false;
+    const timeout=setTimeout(()=>fail(new Error("Playroom script load timeout")),20000);
+    function fail(err) { if(settled)return; settled=true;clearTimeout(timeout);
+      pr.loading=null;s.remove();reject(err); }
+    s.onload=()=>{if(settled)return;settled=true;clearTimeout(timeout);resolve();};
+    s.onerror=()=>fail(new Error("could not load the Playroom Kit script"));
+    document.head.appendChild(s);
   });
   return pr.loading;
 }
@@ -2859,14 +2879,31 @@ async function tryConnectPlayroom(isRetry) {
     const onTikTokLiveEvent = mod.onTikTokLiveEvent || window.onTikTokLiveEvent;
     if (typeof insertCoin !== "function" || typeof onTikTokLiveEvent !== "function")
       throw new Error("insertCoin / onTikTokLiveEvent not found");
-    await insertCoin({ liveMode: "tiktok" });
+    await v20Timeout(insertCoin({ liveMode:"tiktok" }), 30000, "Playroom handshake");
     if (generation !== pr.generation) return;
     const off = onTikTokLiveEvent((event) => {
       if (generation !== pr.generation || state.mode !== "live") return;
-      try { const mapped = mapLiveEvent(event); if (mapped) handleLiveEvent(mapped); }
-      catch (e) { console.warn("[live] bad event", e); }
+      try {
+        const mapped = mapLiveEvent(event);
+        if (!mapped) return;
+        const result = handleLiveEvent(mapped);
+        const outcome = result?.outcome === "duplicate" ? "duplicate" :
+          result?.outcome === "rejected" ? "rejected" :
+          result?.outcome === "held" ? "held" :
+          result?.outcome === "applied" || result?.outcome === "settled" ? "applied" : "forwarded";
+        window.V20Ops?.event(mapped.type,outcome);
+      } catch(e) { console.warn("[live] bad event", e); }
     });
     pr.unsubscribe = typeof off === "function" ? off : null;
+    const onDisconnect=mod.onDisconnect||window.onDisconnect;
+    if(typeof onDisconnect==="function") {
+      const offConnection=onDisconnect(()=>{
+        if(generation!==pr.generation||state.mode!=="live")return;
+        ++pr.generation;clearPlayroomListener();pr.inFlight=false;
+        setConn("down","provider disconnected");scheduleRetry();
+      });
+      pr.disconnectOff=typeof offConnection==="function"?offConnection:null;
+    }
     if (isRetry) LEDGER.reconnects++;
     pr.subscribed = true; state.conn.tries = 0; state.conn.retryAt = 0;
     setConn(state.conn.lastEvent ? "live" : "listening", "subscribed to TikTok LIVE events");
@@ -3023,6 +3060,7 @@ function tick(now) {
     updateParticles(dt);
     updateCamera(dt);
     renderer.render(scene, camera);
+    window.V20Ops?.frame(now);
     updateLabels();
     updateFX2(dt);
     pumpPop(); pumpReceipts();
@@ -3039,6 +3077,7 @@ setInterval(() => {
 }, 500);
 
 function boot() {
+  window.V20Ops?.init("pyramid");
   TEAM_IDS.forEach(id => { crestURL[id] = makeCrest(id); });
   $("wait-c1").src = crestURL.sun; $("wait-c2").src = crestURL.nile;
   buildWorld(); buildPeople(); buildRopes(); TEAM_IDS.forEach(buildLitter); buildDrummers(); buildApep();
