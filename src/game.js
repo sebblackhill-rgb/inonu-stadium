@@ -434,6 +434,7 @@ function milestone(id, n) {
   showPop("", ["milestone", { n }], ["milestoneSub", { team: teamName(id), pct }], 2600, null, 1);
   sfx("win"); flash(0.35, "#fff2c0");
   if (window.onMilestone) window.onMilestone(id, n);
+  cueV17Camera("layer", id, 2.1);
 }
 function checkGust() {
   const lead = Math.max(state.teams.sun.layers, state.teams.nile.layers) / CONFIG.layers;
@@ -462,6 +463,7 @@ function raceWon(id) {
   showPop("win", ["raceWin", { team: teamName(id) }], ["raceWinSub"], 3600, null, 4);
   sfx("win"); flash(0.5, "#fff2c0");
   state.phaseAt = state.time + 4.2;
+  cueV17Camera("race", id, 3.3);
   applyPhaseUI();
 }
 function activeCrowd() {
@@ -480,6 +482,7 @@ function startBoss() {
   showPop("ra", ["bossIntro"], ["bossIntroSub"], 3200, null, 4);
   log("gift", ["logBoss"]); sfx("roar"); shake(0.9);
   if (window.onBossStart) window.onBossStart();
+  cueV17Camera("boss", null, 3.2);
   applyPhaseUI();
   flushHeld(); // gifts sent during the race transition now hit Apep
 }
@@ -522,9 +525,11 @@ function endVictory(reason) {
   log("win", ["logWin", { team: build }]);
   sfx("win"); flash(0.7, "#fff4c0"); shake(0.8);
   if (window.onVictory) window.onVictory(build);
+  cueV17Camera("victory", build, 7.2);
   applyPhaseUI();
 }
 function newRound() {
+  V17_CINEMA.until = 0; // never carry a ceremony shot into the next round
   state.phase = "build"; state.raceWinner = null; state.winner = null; state.slayer = null; state.round++;
   resetTeams(); state.gustUntil = 0; state.gustsDone = 0;
   for (const u of state.users.values()) { u.heaves = 0; u.power = 0; u.free = 0; u.giftPts = 0; }
@@ -2810,6 +2815,24 @@ const CAM = {
   victory: { pos: [0, 26, 50], look: [0, 12, -24] }
 };
 let camGrow = 0;
+// v1.7: camera-only cinematic beats. No change to deliveries, boss HP,
+// winner selection, gift receipts, round clocks or saved replay events.
+const V17_CINEMA = { kind: "", team: null, start: 0, until: 0, cooldown: 0,
+  enabled: QP.get("cinema") !== "0" &&
+    !(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) };
+function cueV17Camera(kind, team, seconds) {
+  if (!V17_CINEMA.enabled || CONFIG.calmEffects) return false;
+  if (kind === "layer" && state.time < V17_CINEMA.cooldown) return false;
+  V17_CINEMA.kind = kind; V17_CINEMA.team = team;
+  V17_CINEMA.start = state.time; V17_CINEMA.until = state.time + Math.min(8, Math.max(0.6, seconds));
+  if (kind === "layer") V17_CINEMA.cooldown = state.time + 6;
+  return true;
+}
+window.__v17CameraState = () => ({ kind: V17_CINEMA.kind,
+  active: V17_CINEMA.enabled && !CONFIG.calmEffects && state.time < V17_CINEMA.until,
+  zoom: camera.zoom });
+if (QP.get("visualQA") === "1")
+  window.__v17Preview = (kind = "layer", team = "sun") => cueV17Camera(kind, team, 3);
 function updateCamera(dt) {
   const key = state.phase === "boss" || state.phase === "race" ? "boss" : (state.phase === "victory" ? "victory" : "build");
   let c = CAM[key];
@@ -2822,6 +2845,35 @@ function updateCamera(dt) {
   }
   camPos.set(c.pos[0] + Math.sin(state.time * 0.21) * 1.0, c.pos[1] + Math.sin(state.time * 0.17) * 0.3, c.pos[2]);
   camLook.set(c.look[0], c.look[1], c.look[2]);
+  const shot = V17_CINEMA.enabled && !CONFIG.calmEffects && state.time < V17_CINEMA.until ? V17_CINEMA : null;
+  const blend = shot ? Math.max(0, Math.min(1, (state.time - shot.start) / 0.5,
+    (shot.until - state.time) / 0.7)) : 0;
+  let targetZoom = 1;
+  if (blend) {
+    const side = shot.team === "nile" ? 1 : -1;
+    let p, l;
+    if (shot.kind === "layer") {
+      p = [side * 17, 23, 47]; l = [side * 7, 9, -25]; targetZoom = 1.035;
+    } else if (shot.kind === "race") {
+      p = [0, 36, 63]; l = [0, 16, -26];
+    } else if (shot.kind === "boss") {
+      p = [0, 30, 70]; l = [0, 22, -45];
+    } else if (shot.kind === "victory") {
+      // First celebrate the finished monument, then reveal the whole valley.
+      const wide = state.time - shot.start > 3.8;
+      p = wide ? [0, 38, 78] : [side * 10, 30, 56];
+      l = wide ? [0, 15, -27] : [0, 17, -29];
+    }
+    if (p && l) {
+      camPos.lerp(new THREE.Vector3(...p), blend);
+      camLook.lerp(new THREE.Vector3(...l), blend);
+    }
+  }
+  const desiredZoom = 1 + (targetZoom - 1) * blend;
+  const zoom = camera.zoom + (desiredZoom - camera.zoom) * Math.min(1, dt * 4);
+  if (Math.abs(zoom - camera.zoom) > 0.0001) {
+    camera.zoom = zoom; camera.updateProjectionMatrix();
+  }
   if (CONFIG.calmEffects) state.shake = 0;
   if (state.shake > 0) {
     camPos.x += (Math.random() - 0.5) * state.shake * 0.6; camPos.y += (Math.random() - 0.5) * state.shake * 0.4;
