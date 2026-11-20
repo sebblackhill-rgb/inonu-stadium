@@ -53,6 +53,10 @@ body.mobile #v18-pressure, body.clip #v18-pressure { left:80px; right:80px; bott
 @media (prefers-reduced-motion:reduce) { #v18-pressure { transition:none; transform:none; } }
 @media (max-height:700px) { #v18-pressure { bottom:136px; } }
 
+/* v1.8 removes the legacy mid-pitch attack banner. The new contextual card
+   already shows the same live attack information without obscuring football. */
+#attack { visibility:hidden !important; }
+
 /* scoreboard */
 #score { position: absolute; top: 8px; left: 8px; right: 8px; height: 58px; border-radius: 14px; display: flex; align-items: stretch; overflow: hidden;
   background: linear-gradient(180deg, #1b1f2b, #0b0d13); border: 2px solid #3a4152; box-shadow: 0 8px 22px rgba(0,0,0,.55); }
