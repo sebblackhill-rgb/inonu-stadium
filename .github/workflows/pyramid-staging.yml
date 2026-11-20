@@ -1,7 +1,7 @@
 name: Pyramid staging QA (isolated)
 on:
   push:
-    branches: [codex/pyramid-stabilization-20261119, codex/v17-pyramid-cinematic-20261120, codex/v18-gameplay-pyramid-20261120, codex/v19-pyramid-finale-20261120]
+    branches: [codex/pyramid-stabilization-20261119, codex/v17-pyramid-cinematic-20261120, codex/v18-gameplay-pyramid-20261120, codex/v19-pyramid-finale-20261120, codex/v20-release-pyramid-20261120]
 permissions:
   contents: read
 jobs:
@@ -19,7 +19,7 @@ jobs:
       - name: Preserve exact tested Pyramid staging source for export
         uses: actions/upload-artifact@v4
         with:
-          name: pyramid-v19-finale-source
+          name: pyramid-v20-source
           path: |
             .nojekyll
             index.html
@@ -33,7 +33,7 @@ jobs:
           retention-days: 30
   browser:
     runs-on: ubuntu-latest
-    timeout-minutes: 9
+    timeout-minutes: 14
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -50,11 +50,15 @@ jobs:
           timeout 150s node tests/v17-cinematic-browser.mjs
           timeout 150s node tests/v18-viewer-browser.mjs
           timeout 150s node tests/v19-finale-browser.mjs
+          timeout 150s node tests/v20-obs-browser.mjs
+          timeout 150s node tests/v20-live-mock-browser.mjs
       - name: Upload screenshot evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: pyramid-staging-browser-evidence
-          path: browser-evidence/*.png
+          path: |
+            browser-evidence/*.png
+            browser-evidence/*.json
           if-no-files-found: warn
           retention-days: 14
