@@ -1254,7 +1254,7 @@ function renderV18Heave() {
     progress = Math.max(0, Math.min(100, (1 - remaining) * 100));
     const critical = remaining > 0 && remaining <= 0.2;
     headline = critical
-      ? (tr ? "🔥 SON HAMLE · APEP %" : "🔥 FINAL PUSH · APEP ") + Math.ceil(remaining * 100) + "%"
+      ? (tr ? "🔥 SON HAMLE · APEP " : "🔥 FINAL PUSH · APEP ") + Math.ceil(remaining * 100) + "%"
       : (tr ? "🐍 APEP'İ DURDUR" : "🐍 DEFEAT APEP");
     instruction = critical
       ? (tr ? "Herkes yorum yapsın veya beğensin!" : "Everyone comment or like now!")
