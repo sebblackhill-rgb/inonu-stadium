@@ -1,9 +1,9 @@
 name: Staging regression checks
 on:
   push:
-    branches: [codex/stabilization-20261119]
+    branches: [codex/stabilization-20261119, codex/v17-inonu-cinematic-20261120]
   pull_request:
-    branches: [main]
+    branches: [main, codex/stabilization-20261119]
 permissions:
   contents: read
 jobs:
@@ -20,10 +20,10 @@ jobs:
           bash build.sh
       - name: Source-anchored regression checks
         run: node --test tests/stabilization.test.mjs
-      - name: Archive exact assembled v1.6 staging game for offline review
+      - name: Archive exact assembled v1.7 staging game for offline review
         uses: actions/upload-artifact@v4
         with:
-          name: inonu-v16-staging-game
+          name: inonu-v17-staging-game
           path: |
             index.html
             src/
@@ -53,6 +53,7 @@ jobs:
           timeout 120s node tests/natural-soak-browser.mjs
           timeout 230s node tests/match-cycle-browser.mjs
           timeout 120s node tests/visual-choreography-browser.mjs
+          timeout 120s node tests/v17-cinematic-browser.mjs
       - name: Upload screenshots for review (even if browser checks fail)
         if: always()
         uses: actions/upload-artifact@v4
