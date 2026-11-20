@@ -642,14 +642,47 @@ function fit() {
 let CAMX = +(Q.get("cx") || -34), CAMY = +(Q.get("cy") || 60), LOOKX = +(Q.get("lx") || 4.5), CAMFOV = +(Q.get("fov") || 52);
 const FOVP = +(Q.get("fp") || 0.9), LOOKK = +(Q.get("lk") || 40);
 const INTRO = +(Q.get("intro") || 2.6); let introStart = 0, introHold = false;
+// v1.7: portrait-friendly shot direction. All match outcomes still come from
+// updateMatch; this is presentation-only and can be disabled with ?cinema=0.
+const V17_CAMERA = {
+  enabled: Q.get("cinema") !== "0" &&
+    !(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches),
+  mode: "wide"
+};
+window.__v17CameraState = () => ({ ...V17_CAMERA, fov: camera.fov,
+  position: [camera.position.x, camera.position.y, camera.position.z] });
 function updateCamera(dt) {
   const t = state.time, bz = state.ballZ;
   const tall = Math.max(1, (H / W) / (960 / 540)); let fov = CAMFOV * Math.pow(tall, FOVP);   // tall phones: keep both goals in view, spend the extra height on the Bosphorus instead of empty terrace
   camPos.set(CAMX + Math.sin(t * 0.15) * 1.5, CAMY, bz * 0.25 * (2 - tall) + Math.sin(t * 0.11) * 1.5); camLook.set(LOOKX + (tall - 1) * LOOKK, 0, bz * 0.28 * (2 - tall));
   let snap = false;
-  if (replay.on && replay.ball) { const b = replay.ball, d = attackDir(state.lastScorer || "home"); camPos.set(b.bx - 15, 15, b.bz - d * 6); camLook.set(b.bx + 2 + (tall - 1) * 6, 0.4, b.bz + d * 1.5); fov = CAMFOV * 0.66; snap = camera.position.x > 1e8; }
-  else if (state.phase === "celebrate" && state.phaseT < 2.4 && scorer) { camPos.set(scorer.x - 24, 34, scorer.z * 0.8); camLook.set(scorer.x + 3 + (tall - 1) * LOOKK * 0.6, 0, scorer.z * 0.9); fov = CAMFOV * 0.85; }
-  else if (state.phase === "celebrate" && camera.position.x > 1e8) snap = true;
+  V17_CAMERA.mode = "wide";
+  if (replay.on && replay.ball) {
+    const b = replay.ball, d = attackDir(state.lastScorer || "home");
+    camPos.set(b.bx - 15, 15, b.bz - d * 6);
+    camLook.set(b.bx + 2 + (tall - 1) * 6, 0.4, b.bz + d * 1.5);
+    fov = CAMFOV * 0.66; snap = camera.position.x > 1e8;
+    V17_CAMERA.mode = "replay";
+  } else if (state.phase === "celebrate" && state.phaseT < 2.4 && scorer) {
+    camPos.set(scorer.x - 24, 34, scorer.z * 0.8);
+    camLook.set(scorer.x + 3 + (tall - 1) * LOOKK * 0.6, 0, scorer.z * 0.9);
+    fov = CAMFOV * 0.85; V17_CAMERA.mode = "celebrate";
+  } else if (V17_CAMERA.enabled && state.phase === "penalty" && state.pen && TEAMS.includes(state.pen.team)) {
+    // Keep both the penalty spot and goal mouth in the 9:16 frame.
+    const d = attackDir(state.pen.team);
+    camPos.set(-29, 47, d * (PL - 10));
+    camLook.set(LOOKX + (tall - 1) * LOOKK * 0.52, 0, d * (PL - 5));
+    fov *= 0.88; V17_CAMERA.mode = "penalty";
+  } else if (V17_CAMERA.enabled && state.phase === "play") {
+    const pressure = TEAMS.find(team => inAttack(team) &&
+      state.chant[team] >= CONFIG.shots.minChant);
+    if (pressure) {
+      // A small continuous push-in signals a real attacking opportunity.
+      camPos.y -= 5; camPos.x += 1.5;
+      camLook.z += attackDir(pressure) * 2;
+      fov *= 0.96; V17_CAMERA.mode = "attack";
+    }
+  } else if (state.phase === "celebrate" && camera.position.x > 1e8) snap = true;
   if (state.shake > 0) { camPos.x += (Math.random() - 0.5) * state.shake * 1.4; camPos.y += (Math.random() - 0.5) * state.shake; state.shake = Math.max(0, state.shake - dt * 1.5); }
   if (Math.abs(camera.fov - fov) > 0.01) { camera.fov = fov; camera.updateProjectionMatrix(); }
   const ik = introHold ? 0 : (state.time - introStart) / INTRO;
