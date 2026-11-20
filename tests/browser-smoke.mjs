@@ -61,6 +61,19 @@ try {
        phase:s.phase};
    });
    await page.screenshot({path:'browser-evidence/pyramid-'+name+'.png',fullPage:true});
+   if (name === 'portrait') {
+     // Record actual instanced-worker action choreography in the WebGL scene.
+     // No gift is sent; effort is only a 3D pose cue for this staging snapshot.
+     const poseProof = await page.evaluate(()=>{
+       const state=window.__game,fan=state.users.get('qa-joined');
+       state.teams.sun.lurch=1;
+       if(fan) fan.heaveT=performance.now()+490;
+       return {activeWorker:fan?.inst>=0,teamLurch:state.teams.sun.lurch};
+     });
+     await page.waitForTimeout(110);
+     await page.screenshot({path:'browser-evidence/pyramid-v16-rope-pull.png',fullPage:true});
+     if(!poseProof.activeWorker) throw Error('Pyramid rig action proof has no active worker');
+   }
    console.log(name,JSON.stringify({report,errors}));
    if(!report.joined||!report.held||!report.claimed||!report.missionVisible||!report.objectiveLayout||!report.rejected||
       !report.invalidExcluded||!report.noHostCredit||!report.liveTestRejected||
