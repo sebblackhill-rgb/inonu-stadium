@@ -660,7 +660,8 @@ async function tryConnectPlayroom(manual) {
   try {
     // Never load an arbitrary script from a public broadcast URL parameter.
     // The mock bridge override is test-only, restricted to localhost.
-    const localTest = ["localhost","127.0.0.1"].includes(location.hostname);
+    const localTest = typeof location === "undefined" ||
+      ["localhost","127.0.0.1"].includes(location.hostname);
     const src = (localTest && (window.__bridgeSrc || Q.get("bridgeSrc"))) ||
       "https://cdn.joinplayroom.com/playroomkit/multiplayer.full.umd.js";
     document.querySelectorAll("script[data-bridge]").forEach(s => s.remove());
