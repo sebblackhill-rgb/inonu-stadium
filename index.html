@@ -1466,7 +1466,7 @@ function safePositiveCount(v, max) {
 // Provider event IDs are separate from gift streak groups: one provider event
 // must never credit twice even after a reconnect or a newer browser callback.
 const v20EventIds = new Map();
-window.__v20EventCount = () => v20EventIds.size;
+if (typeof window !== "undefined") window.__v20EventCount = () => v20EventIds.size;
 window.handleLiveEvent = function (ev) {
   try {
     if (!ev) return;
