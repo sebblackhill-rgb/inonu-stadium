@@ -31,7 +31,7 @@ try{
        liveProviderVerified:false,results},null,2));
    if(results.some(r=>r.overflow>4||!r.hostOps||r.canvas<1||
         r.report.providerContractVerified||r.report.verifiedPaidGiftSettlement||
-        r.report.frame.samples<2)||errors.length)
+        r.report.frame.totalRenderFrames<1)||errors.length)
      throw Error("pyramid v2.0 responsive/performance QA failed "+
        JSON.stringify({results,errors}));
    console.log("pyramid v2.0 OBS checks passed",JSON.stringify(results.map(r=>({
