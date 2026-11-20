@@ -29,6 +29,13 @@ try{
       overflow:document.documentElement.scrollWidth-innerWidth,
       canvas:document.querySelectorAll('canvas').length};
   });
+  // Capture a coherent construction-stage UI after synthetic boss assertions.
+  await page.evaluate(()=>{
+    const s=window.__game;s.phase='build';s.time=0;
+    s.teams.sun.delivering=0;s.teams.sun.pts=CONFIG.pullsPerBlock/2;
+    s.bossHP=0;s.bossMax=0;applyPhaseUI();refreshUI();
+    renderer.render(scene,camera);
+  });
   await page.screenshot({path:'browser-evidence/pyramid-v18-crew-instruction.png',fullPage:true});
   if(!report.join.includes('JOIN A CREW')||!report.halfway.title.includes('SUN')||
     Math.abs(report.halfway.width-50)>0.1||!report.transit||!report.boss||
