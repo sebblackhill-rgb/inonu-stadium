@@ -53,7 +53,7 @@ test("90-frame p95 and WebGL loss flag never certify deployment",()=>{
  let r=ops.report();
  assert.equal(r.frame.samples,119);
  assert(r.frame.p95Ms>=16&&r.frame.p95Ms<=18);
- clock(5000);ops.frame(5000); // skipped suspended tab
+ clock(7000);ops.frame(7000); // skipped suspended tab
  assert.equal(ops.report().frame.longPauses,1);
  callbacks.webglcontextlost?.();
  assert.equal(ops.report().warning,"WEBGL_CONTEXT_LOST");
